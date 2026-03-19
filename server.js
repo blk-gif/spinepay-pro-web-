@@ -151,15 +151,23 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS intake_forms (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     patient_id INTEGER NOT NULL,
-    appointment_id INTEGER,
-    personal_info TEXT,
-    insurance_info TEXT,
+    full_name TEXT,
+    dob TEXT,
+    gender TEXT,
+    address TEXT,
+    phone TEXT,
+    email TEXT,
+    insurance_provider TEXT,
+    policy_number TEXT,
+    group_number TEXT,
     medical_history TEXT,
     reason_for_visit TEXT,
     current_medications TEXT,
     allergies TEXT,
+    hipaa_acknowledged INTEGER DEFAULT 0,
     signature TEXT,
-    signed_at TEXT,
+    signature_date TEXT,
+    submitted_at TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (patient_id) REFERENCES patients(id) ON DELETE CASCADE
   );
@@ -287,6 +295,25 @@ db.exec(`
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 `);
+
+// ── Migrate existing databases ────────────────────────────────────────────────
+const migrations = [
+  'ALTER TABLE intake_forms ADD COLUMN full_name TEXT',
+  'ALTER TABLE intake_forms ADD COLUMN dob TEXT',
+  'ALTER TABLE intake_forms ADD COLUMN gender TEXT',
+  'ALTER TABLE intake_forms ADD COLUMN address TEXT',
+  'ALTER TABLE intake_forms ADD COLUMN phone TEXT',
+  'ALTER TABLE intake_forms ADD COLUMN email TEXT',
+  'ALTER TABLE intake_forms ADD COLUMN insurance_provider TEXT',
+  'ALTER TABLE intake_forms ADD COLUMN policy_number TEXT',
+  'ALTER TABLE intake_forms ADD COLUMN group_number TEXT',
+  'ALTER TABLE intake_forms ADD COLUMN hipaa_acknowledged INTEGER DEFAULT 0',
+  'ALTER TABLE intake_forms ADD COLUMN signature_date TEXT',
+  'ALTER TABLE intake_forms ADD COLUMN submitted_at TEXT',
+];
+for (const q of migrations) {
+  try { db.exec(q); } catch (_) { /* column already exists */ }
+}
 
 // Seed default data
 const adminExists = db.prepare('SELECT id FROM users WHERE username = ?').get('admin');
@@ -565,7 +592,7 @@ app.post('/api/claims', requireAuth, (req, res) => {
     if (!data.claim_number) {
       data.claim_number = `CLM-${new Date().getFullYear()}-${Date.now().toString().slice(-6)}`;
     }
-    const result = db.prepare('INSERT INTO claims (patient_id, appointment_id, claim_number, insurer, claim_type, amount, paid_amount, status, filed_date, service_date, icd_codes, cpt_codes, notes) VALUES (@patient_id, @appointment_id, @claim_number, @insurer, @claim_type, @amount, @paid_amount, @status, @filed_date, @service_date, @icd_codes, @cpt_codes, @notes)').run({ paid_amount: 0, status: 'pending', ...data });
+    const result = db.prepare('INSERT INTO claims (patient_id, appointment_id, claim_number, insurer, claim_type, amount, paid_amount, status, filed_date, service_date, icd_codes, cpt_codes, notes) VALUES (@patient_id, @appointment_id, @claim_number, @insurer, @claim_type, @amount, @paid_amount, @status, @filed_date, @service_date, @icd_codes, @cpt_codes, @notes)').run({ appointment_id: null, paid_amount: 0, status: 'pending', ...data });
     res.json({ success: true, id: result.lastInsertRowid });
   } catch (err) { res.json({ success: false, error: err.message }); }
 });
@@ -691,24 +718,28 @@ app.put('/api/locations/:id', requireAuth, (req, res) => {
 });
 
 // ── Intake Forms ──────────────────────────────────────────────────────────────
+app.get('/api/intake', requireAuth, (req, res) => {
+  res.json(db.prepare('SELECT f.*, p.first_name, p.last_name FROM intake_forms f JOIN patients p ON f.patient_id = p.id ORDER BY f.created_at DESC').all());
+});
+
 app.get('/api/intake/by-patient/:patientId', requireAuth, (req, res) => {
-  res.json(db.prepare('SELECT * FROM intake_forms WHERE patient_id = ? ORDER BY created_at DESC').all(req.params.patientId));
+  res.json(db.prepare('SELECT f.*, p.first_name, p.last_name FROM intake_forms f JOIN patients p ON f.patient_id = p.id WHERE f.patient_id = ? ORDER BY f.created_at DESC').all(req.params.patientId));
 });
 
 app.get('/api/intake/:id', requireAuth, (req, res) => {
-  res.json(db.prepare('SELECT * FROM intake_forms WHERE id = ?').get(req.params.id));
+  res.json(db.prepare('SELECT f.*, p.first_name, p.last_name FROM intake_forms f JOIN patients p ON f.patient_id = p.id WHERE f.id = ?').get(req.params.id));
 });
 
 app.post('/api/intake', requireAuth, (req, res) => {
   try {
-    const result = db.prepare('INSERT INTO intake_forms (patient_id, appointment_id, personal_info, insurance_info, medical_history, reason_for_visit, current_medications, allergies, signature, signed_at) VALUES (@patient_id, @appointment_id, @personal_info, @insurance_info, @medical_history, @reason_for_visit, @current_medications, @allergies, @signature, @signed_at)').run(req.body);
+    const result = db.prepare('INSERT INTO intake_forms (patient_id, full_name, dob, gender, address, phone, email, insurance_provider, policy_number, group_number, medical_history, current_medications, allergies, reason_for_visit, hipaa_acknowledged, signature, signature_date, submitted_at) VALUES (@patient_id, @full_name, @dob, @gender, @address, @phone, @email, @insurance_provider, @policy_number, @group_number, @medical_history, @current_medications, @allergies, @reason_for_visit, @hipaa_acknowledged, @signature, @signature_date, @submitted_at)').run({ hipaa_acknowledged: 0, ...req.body });
     res.json({ success: true, id: result.lastInsertRowid });
   } catch (err) { res.json({ success: false, error: err.message }); }
 });
 
 app.put('/api/intake/:id', requireAuth, (req, res) => {
   try {
-    db.prepare('UPDATE intake_forms SET personal_info=@personal_info, insurance_info=@insurance_info, medical_history=@medical_history, reason_for_visit=@reason_for_visit, current_medications=@current_medications, allergies=@allergies, signature=@signature, signed_at=@signed_at WHERE id=@id').run({ ...req.body, id: req.params.id });
+    db.prepare('UPDATE intake_forms SET full_name=@full_name, dob=@dob, gender=@gender, address=@address, phone=@phone, email=@email, insurance_provider=@insurance_provider, policy_number=@policy_number, group_number=@group_number, medical_history=@medical_history, current_medications=@current_medications, allergies=@allergies, reason_for_visit=@reason_for_visit, hipaa_acknowledged=@hipaa_acknowledged, signature=@signature, signature_date=@signature_date, submitted_at=@submitted_at WHERE id=@id').run({ hipaa_acknowledged: 0, ...req.body, id: req.params.id });
     res.json({ success: true });
   } catch (err) { res.json({ success: false, error: err.message }); }
 });
@@ -733,6 +764,10 @@ app.put('/api/insverify/:id', requireAuth, (req, res) => {
 });
 
 // ── SOAP Notes ────────────────────────────────────────────────────────────────
+app.get('/api/soap', requireAuth, (req, res) => {
+  res.json(db.prepare('SELECT s.*, p.first_name, p.last_name, a.date, a.time, a.type as appt_type FROM soap_notes s JOIN patients p ON s.patient_id = p.id LEFT JOIN appointments a ON s.appointment_id = a.id ORDER BY a.date DESC, s.created_at DESC').all());
+});
+
 app.get('/api/soap/by-appointment/:appointmentId', requireAuth, (req, res) => {
   res.json(db.prepare('SELECT * FROM soap_notes WHERE appointment_id = ?').get(req.params.appointmentId));
 });
@@ -743,7 +778,7 @@ app.get('/api/soap/by-patient/:patientId', requireAuth, (req, res) => {
 
 app.post('/api/soap', requireAuth, (req, res) => {
   try {
-    const result = db.prepare('INSERT INTO soap_notes (appointment_id, patient_id, subjective, objective, assessment, plan, diagnosis_codes, procedure_codes, created_by) VALUES (@appointment_id, @patient_id, @subjective, @objective, @assessment, @plan, @diagnosis_codes, @procedure_codes, @created_by)').run(req.body);
+    const result = db.prepare('INSERT INTO soap_notes (appointment_id, patient_id, subjective, objective, assessment, plan, diagnosis_codes, procedure_codes, created_by) VALUES (@appointment_id, @patient_id, @subjective, @objective, @assessment, @plan, @diagnosis_codes, @procedure_codes, @created_by)').run({ created_by: null, ...req.body });
     res.json({ success: true, id: result.lastInsertRowid });
   } catch (err) { res.json({ success: false, error: err.message }); }
 });
@@ -755,6 +790,11 @@ app.put('/api/soap/:id', requireAuth, (req, res) => {
   } catch (err) { res.json({ success: false, error: err.message }); }
 });
 
+app.delete('/api/soap/:id', requireAuth, (req, res) => {
+  db.prepare('DELETE FROM soap_notes WHERE id = ?').run(req.params.id);
+  res.json({ success: true });
+});
+
 // ── EOB Records ───────────────────────────────────────────────────────────────
 app.get('/api/eob', requireAuth, (req, res) => {
   res.json(db.prepare('SELECT e.*, p.first_name, p.last_name, c.claim_number FROM eob_records e JOIN patients p ON e.patient_id = p.id LEFT JOIN claims c ON e.claim_id = c.id ORDER BY e.received_date DESC, e.created_at DESC').all());
@@ -764,9 +804,14 @@ app.get('/api/eob/by-patient/:patientId', requireAuth, (req, res) => {
   res.json(db.prepare('SELECT * FROM eob_records WHERE patient_id = ? ORDER BY received_date DESC').all(req.params.patientId));
 });
 
+app.delete('/api/eob/:id', requireAuth, (req, res) => {
+  db.prepare('DELETE FROM eob_records WHERE id = ?').run(req.params.id);
+  res.json({ success: true });
+});
+
 app.post('/api/eob', requireAuth, (req, res) => {
   try {
-    const data = { discrepancy_flag: 0, ...req.body };
+    const data = { claim_id: null, discrepancy_flag: 0, status: 'received', ...req.body };
     if (data.claim_id && !data.discrepancy_flag) {
       const claim = db.prepare('SELECT * FROM claims WHERE id = ?').get(data.claim_id);
       if (claim && Math.abs(claim.amount - data.billed_amount) > 0.01) {
@@ -787,6 +832,11 @@ app.put('/api/eob/:id', requireAuth, (req, res) => {
 });
 
 // ── Reminders ─────────────────────────────────────────────────────────────────
+app.delete('/api/reminders/templates/:id', requireAuth, (req, res) => {
+  db.prepare('DELETE FROM reminder_templates WHERE id = ?').run(req.params.id);
+  res.json({ success: true });
+});
+
 app.get('/api/reminders/templates', requireAuth, (req, res) => {
   res.json(db.prepare('SELECT * FROM reminder_templates ORDER BY type, trigger_hours').all());
 });
@@ -829,7 +879,7 @@ app.get('/api/waitlist', requireAuth, (req, res) => {
 });
 
 app.post('/api/waitlist', requireAuth, (req, res) => {
-  const result = db.prepare("INSERT INTO waitlist (patient_id, desired_date, desired_time, location_id, notes, status) VALUES (@patient_id, @desired_date, @desired_time, @location_id, @notes, 'waiting')").run(req.body);
+  const result = db.prepare("INSERT INTO waitlist (patient_id, desired_date, desired_time, location_id, notes, status) VALUES (@patient_id, @desired_date, @desired_time, @location_id, @notes, 'waiting')").run({ location_id: null, ...req.body });
   res.json({ success: true, id: result.lastInsertRowid });
 });
 
@@ -883,7 +933,7 @@ app.get('/api/pi/by-patient/:patientId', requireAuth, (req, res) => {
 
 app.post('/api/pi', requireAuth, (req, res) => {
   try {
-    const result = db.prepare('INSERT INTO pi_cases (patient_id, referral_id, accident_date, accident_description, attorney_name, attorney_firm, attorney_phone, attorney_email, case_number, lien_amount, settlement_amount, case_status, notes) VALUES (@patient_id, @referral_id, @accident_date, @accident_description, @attorney_name, @attorney_firm, @attorney_phone, @attorney_email, @case_number, @lien_amount, @settlement_amount, @case_status, @notes)').run({ case_status: 'open', lien_amount: 0, settlement_amount: 0, ...req.body });
+    const result = db.prepare('INSERT INTO pi_cases (patient_id, referral_id, accident_date, accident_description, attorney_name, attorney_firm, attorney_phone, attorney_email, case_number, lien_amount, settlement_amount, case_status, notes) VALUES (@patient_id, @referral_id, @accident_date, @accident_description, @attorney_name, @attorney_firm, @attorney_phone, @attorney_email, @case_number, @lien_amount, @settlement_amount, @case_status, @notes)').run({ referral_id: null, case_status: 'open', lien_amount: 0, settlement_amount: 0, ...req.body });
     res.json({ success: true, id: result.lastInsertRowid });
   } catch (err) { res.json({ success: false, error: err.message }); }
 });

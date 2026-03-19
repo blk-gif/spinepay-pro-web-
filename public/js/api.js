@@ -107,6 +107,7 @@
     },
 
     intake: {
+      getAll: () => get('/api/intake'),
       getByPatient: (patientId) => get(`/api/intake/by-patient/${patientId}`),
       getById: (id) => get(`/api/intake/${id}`),
       create: (data) => post('/api/intake', data),
@@ -120,23 +121,27 @@
     },
 
     soap: {
+      getAll: () => get('/api/soap'),
       getByAppointment: (appointmentId) => get(`/api/soap/by-appointment/${appointmentId}`),
       getByPatient: (patientId) => get(`/api/soap/by-patient/${patientId}`),
       create: (data) => post('/api/soap', data),
-      update: (id, data) => put(`/api/soap/${id}`, data)
+      update: (id, data) => put(`/api/soap/${id}`, data),
+      delete: (id) => del(`/api/soap/${id}`)
     },
 
     eob: {
       getAll: () => get('/api/eob'),
       getByPatient: (patientId) => get(`/api/eob/by-patient/${patientId}`),
       create: (data) => post('/api/eob', data),
-      update: (id, data) => put(`/api/eob/${id}`, data)
+      update: (id, data) => put(`/api/eob/${id}`, data),
+      delete: (id) => del(`/api/eob/${id}`)
     },
 
     reminders: {
       getTemplates: () => get('/api/reminders/templates'),
       createTemplate: (data) => post('/api/reminders/templates', data),
       updateTemplate: (id, data) => put(`/api/reminders/templates/${id}`, data),
+      deleteTemplate: (id) => del(`/api/reminders/templates/${id}`),
       getLog: () => get('/api/reminders/log'),
       send: (appointmentId, templateId) => post('/api/reminders/send', { appointmentId, templateId })
     },

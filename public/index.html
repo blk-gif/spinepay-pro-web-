@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SpinePay Pro — Login</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --gold: #d4af37;
+      --gold-light: #f0c040;
+      --gold-dark: #a08020;
+      --gold-dim: #c9a227;
+      --bg-deep: #0a0a0a;
+      --bg-dark: #111111;
+      --bg-card: #1a1a1a;
+      --bg-input: #222222;
+      --text-primary: #ffffff;
+      --text-secondary: #e0e0e0;
+      --text-muted: #a0a0a0;
+      --danger: #e74c3c;
+      --success: #2ecc71;
+      --border: #2a2a2a;
+    }
+
+    html, body {
+      height: 100%;
+      font-family: 'Inter', sans-serif;
+      background: var(--bg-deep);
+      color: var(--text-primary);
+      overflow: hidden;
+    }
+
+    .login-bg {
+      position: fixed;
+      inset: 0;
+      background: radial-gradient(ellipse at 20% 50%, rgba(212,175,55,0.08) 0%, transparent 60%),
+                  radial-gradient(ellipse at 80% 20%, rgba(212,175,55,0.05) 0%, transparent 50%),
+                  radial-gradient(ellipse at 60% 80%, rgba(212,175,55,0.04) 0%, transparent 50%),
+                  linear-gradient(135deg, #0a0a0a 0%, #111111 50%, #0d0d0d 100%);
+    }
+
+    .login-bg::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(212,175,55,0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(212,175,55,0.04) 1px, transparent 1px);
+      background-size: 60px 60px;
+      mask-image: radial-gradient(ellipse at center, black 30%, transparent 75%);
+    }
+
+    .login-bg::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background-image: radial-gradient(circle, rgba(212,175,55,0.06) 2px, transparent 2px);
+      background-size: 120px 120px;
+      background-position: 60px 60px;
+    }
+
+    .login-container {
+      position: relative;
+      z-index: 10;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .login-card {
+      background: linear-gradient(145deg, #1a1a1a 0%, #141414 100%);
+      border: 1px solid rgba(212,175,55,0.25);
+      border-radius: 20px;
+      padding: 52px 48px;
+      width: 100%;
+      max-width: 440px;
+      box-shadow:
+        0 0 0 1px rgba(212,175,55,0.08),
+        0 25px 60px rgba(0,0,0,0.7),
+        0 0 80px rgba(212,175,55,0.06),
+        inset 0 1px 0 rgba(212,175,55,0.1);
+      animation: cardEnter 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+
+    @keyframes cardEnter {
+      from { opacity: 0; transform: translateY(24px) scale(0.97); }
+      to   { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    .logo-area {
+      text-align: center;
+      margin-bottom: 36px;
+    }
+
+    .spine-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 72px;
+      height: 72px;
+      background: linear-gradient(135deg, rgba(212,175,55,0.15), rgba(212,175,55,0.05));
+      border: 1.5px solid rgba(212,175,55,0.4);
+      border-radius: 18px;
+      margin-bottom: 16px;
+      position: relative;
+      box-shadow: 0 0 30px rgba(212,175,55,0.12);
+    }
+
+    .spine-icon i {
+      font-size: 32px;
+      color: var(--gold);
+      filter: drop-shadow(0 0 8px rgba(212,175,55,0.5));
+    }
+
+    .logo-title {
+      font-size: 28px;
+      font-weight: 800;
+      background: linear-gradient(135deg, #f0c040 0%, #d4af37 50%, #c9a227 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      letter-spacing: -0.5px;
+      line-height: 1.1;
+    }
+
+    .logo-subtitle {
+      font-size: 13px;
+      color: var(--text-muted);
+      font-weight: 400;
+      margin-top: 6px;
+      letter-spacing: 0.3px;
+    }
+
+    .divider {
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(212,175,55,0.3), transparent);
+      margin: 24px 0;
+    }
+
+    .form-group {
+      margin-bottom: 18px;
+    }
+
+    .form-label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      margin-bottom: 8px;
+    }
+
+    .input-wrapper {
+      position: relative;
+    }
+
+    .input-icon {
+      position: absolute;
+      left: 14px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--text-muted);
+      font-size: 14px;
+      transition: color 0.2s;
+      pointer-events: none;
+    }
+
+    .form-input {
+      width: 100%;
+      background: var(--bg-input);
+      border: 1.5px solid #2a2a2a;
+      border-radius: 10px;
+      padding: 12px 14px 12px 42px;
+      color: var(--text-primary);
+      font-size: 15px;
+      font-family: 'Inter', sans-serif;
+      transition: border-color 0.2s, box-shadow 0.2s;
+      outline: none;
+    }
+
+    .form-input:focus {
+      border-color: var(--gold);
+      box-shadow: 0 0 0 3px rgba(212,175,55,0.15), 0 0 20px rgba(212,175,55,0.08);
+    }
+
+    .form-input:focus + .input-icon,
+    .input-wrapper:focus-within .input-icon {
+      color: var(--gold);
+    }
+
+    .form-input::placeholder { color: #444; }
+
+    .btn-login {
+      width: 100%;
+      padding: 14px;
+      background: linear-gradient(135deg, #d4af37 0%, #c9a227 50%, #b8941f 100%);
+      border: none;
+      border-radius: 10px;
+      color: #000;
+      font-size: 15px;
+      font-weight: 700;
+      font-family: 'Inter', sans-serif;
+      cursor: pointer;
+      letter-spacing: 0.3px;
+      transition: transform 0.15s, box-shadow 0.15s, filter 0.15s;
+      margin-top: 8px;
+      box-shadow: 0 4px 20px rgba(212,175,55,0.3);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .btn-login::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, rgba(255,255,255,0.15), transparent);
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+
+    .btn-login:hover { transform: translateY(-1px); box-shadow: 0 8px 30px rgba(212,175,55,0.4); filter: brightness(1.05); }
+    .btn-login:hover::before { opacity: 1; }
+    .btn-login:active { transform: translateY(0); }
+
+    .btn-login .btn-text { display: flex; align-items: center; justify-content: center; gap: 8px; }
+    .btn-login .spinner { display: none; width: 16px; height: 16px; border: 2px solid rgba(0,0,0,0.3); border-top-color: #000; border-radius: 50%; animation: spin 0.6s linear infinite; }
+    .btn-login.loading .btn-text { display: none; }
+    .btn-login.loading .spinner { display: block; margin: 0 auto; }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .error-msg {
+      display: none;
+      background: rgba(231,76,60,0.12);
+      border: 1px solid rgba(231,76,60,0.3);
+      border-radius: 8px;
+      padding: 10px 14px;
+      color: #ff6b6b;
+      font-size: 13px;
+      margin-top: 14px;
+      text-align: center;
+    }
+    .error-msg.visible { display: flex; align-items: center; gap: 8px; }
+
+    .footer {
+      text-align: center;
+      margin-top: 28px;
+      color: #333;
+      font-size: 11px;
+      letter-spacing: 0.3px;
+    }
+
+    .footer span { color: #444; }
+
+    .login-card:hover {
+      border-color: rgba(212,175,55,0.35);
+      box-shadow:
+        0 0 0 1px rgba(212,175,55,0.12),
+        0 30px 70px rgba(0,0,0,0.75),
+        0 0 100px rgba(212,175,55,0.08),
+        inset 0 1px 0 rgba(212,175,55,0.15);
+      transition: all 0.4s ease;
+    }
+  </style>
+</head>
+<body>
+  <div class="login-bg"></div>
+  <div class="login-container">
+    <div class="login-card">
+      <div class="logo-area">
+        <div class="spine-icon">
+          <i class="fa-solid fa-bone"></i>
+        </div>
+        <div class="logo-title">SpinePay Pro</div>
+        <div class="logo-subtitle">Walden Bailey Chiropractic &bull; Buffalo, NY</div>
+      </div>
+
+      <div class="divider"></div>
+
+      <form id="loginForm" autocomplete="off">
+        <div class="form-group">
+          <label class="form-label" for="username">Username</label>
+          <div class="input-wrapper">
+            <input
+              type="text"
+              id="username"
+              class="form-input"
+              placeholder="Enter username"
+              autocomplete="username"
+              required
+            />
+            <i class="fa-solid fa-user input-icon"></i>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="password">Password</label>
+          <div class="input-wrapper">
+            <input
+              type="password"
+              id="password"
+              class="form-input"
+              placeholder="Enter password"
+              autocomplete="current-password"
+              required
+            />
+            <i class="fa-solid fa-lock input-icon"></i>
+          </div>
+        </div>
+
+        <button type="submit" class="btn-login" id="loginBtn">
+          <span class="btn-text"><i class="fa-solid fa-right-to-bracket"></i> Sign In</span>
+          <div class="spinner"></div>
+        </button>
+
+        <div class="error-msg" id="errorMsg">
+          <i class="fa-solid fa-circle-exclamation"></i>
+          <span id="errorText">Invalid credentials</span>
+        </div>
+      </form>
+
+      <div class="footer">
+        SpinePay Pro &bull; Version 1.0.0 &bull; <span>&copy; 2024 Walden Bailey Chiropractic</span>
+      </div>
+    </div>
+  </div>
+  <script src="js/api.js"></script>
+  <script src="js/login.js"></script>
+</body>
+</html>

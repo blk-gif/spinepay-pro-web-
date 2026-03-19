@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SpinePay Pro</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+
+    <!-- ── SIDEBAR ─────────────────────────────────────────────── -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-brand">
+        <div class="brand-logo">
+          <div class="brand-icon"><i class="fa-solid fa-bone"></i></div>
+          <span class="brand-name">SpinePay Pro</span>
+        </div>
+        <div class="brand-clinic">Walden Bailey Chiropractic</div>
+      </div>
+
+      <nav class="sidebar-nav">
+  <div class="nav-section-label">Main</div>
+
+  <div class="nav-item active" data-module="dashboard" id="nav-dashboard">
+    <i class="fa-solid fa-chart-line"></i>
+    <span>Dashboard</span>
+  </div>
+
+  <div class="nav-item" data-module="patients" id="nav-patients">
+    <i class="fa-solid fa-users"></i>
+    <span>Patients</span>
+  </div>
+
+  <div class="nav-item" data-module="scheduling" id="nav-scheduling">
+    <i class="fa-solid fa-calendar-days"></i>
+    <span>Scheduling</span>
+  </div>
+
+  <div class="nav-section-label">Clinical</div>
+
+  <div class="nav-item" data-module="soap" id="nav-soap">
+    <i class="fa-solid fa-notes-medical"></i>
+    <span>SOAP Notes</span>
+  </div>
+
+  <div class="nav-item" data-module="intake" id="nav-intake">
+    <i class="fa-solid fa-clipboard-list"></i>
+    <span>Intake Forms</span>
+  </div>
+
+  <div class="nav-section-label">Billing</div>
+
+  <div class="nav-item" data-module="billing" id="nav-billing">
+    <i class="fa-solid fa-file-invoice-dollar"></i>
+    <span>Billing &amp; Claims</span>
+    <span class="nav-badge" id="pending-claims-badge" style="display:none">0</span>
+  </div>
+
+  <div class="nav-item" data-module="eob" id="nav-eob">
+    <i class="fa-solid fa-receipt"></i>
+    <span>EOB &amp; Receipts</span>
+  </div>
+
+  <div class="nav-item admin-only" data-module="reports" id="nav-reports">
+    <i class="fa-solid fa-chart-bar"></i>
+    <span>Reports</span>
+  </div>
+
+  <div class="nav-section-label">Operations</div>
+
+  <div class="nav-item" data-module="transport" id="nav-transport">
+    <i class="fa-solid fa-car"></i>
+    <span>Transportation</span>
+  </div>
+
+  <div class="nav-item" data-module="pi" id="nav-pi">
+    <i class="fa-solid fa-gavel"></i>
+    <span>PI Cases</span>
+  </div>
+
+  <div class="nav-item" data-module="waitlist" id="nav-waitlist">
+    <i class="fa-solid fa-list-ol"></i>
+    <span>Waitlist</span>
+  </div>
+
+  <div class="nav-section-label">Network</div>
+
+  <div class="nav-item" data-module="referrals" id="nav-referrals">
+    <i class="fa-solid fa-share-nodes"></i>
+    <span>Referrals</span>
+    <span class="nav-badge gold" id="pending-referrals-badge" style="display:none">0</span>
+  </div>
+
+  <div class="nav-section-label">Staff</div>
+
+  <div class="nav-item" data-module="timeclock" id="nav-timeclock">
+    <i class="fa-solid fa-clock"></i>
+    <span>Time Clock</span>
+  </div>
+
+  <div class="nav-item admin-only" data-module="reminders" id="nav-reminders">
+    <i class="fa-solid fa-bell"></i>
+    <span>Reminders</span>
+  </div>
+</nav>
+
+      <div class="sidebar-footer">
+        <div class="user-card">
+          <div class="user-avatar" id="sidebarUserAvatar">A</div>
+          <div class="user-info">
+            <div class="user-name" id="sidebarUserName">Administrator</div>
+            <div class="user-role" id="sidebarUserRole">admin</div>
+          </div>
+          <button class="btn-logout" id="logoutBtn" title="Sign Out">
+            <i class="fa-solid fa-right-from-bracket"></i>
+          </button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- ── MAIN AREA ───────────────────────────────────────────── -->
+    <div class="main-area">
+
+      <!-- TOP BAR -->
+      <header class="topbar">
+        <div class="topbar-title" id="topbarTitle">
+          <span>Dashboard</span>
+        </div>
+
+        <div class="topbar-search" id="topbarSearchWrap">
+          <i class="fa-solid fa-magnifying-glass"></i>
+          <input
+            type="text"
+            id="globalSearch"
+            placeholder="Search patients..."
+            autocomplete="off"
+          />
+          <div class="search-dropdown" id="searchDropdown"></div>
+        </div>
+
+        <div class="topbar-spacer"></div>
+
+        <div class="topbar-clock">
+          <div id="clockTime" style="font-size:14px; font-weight:600; color:#e0e0e0;"></div>
+          <div id="clockDate" class="date" style="text-align:right;"></div>
+        </div>
+
+        <div id="topbarUserBadge" style="display:flex;align-items:center;gap:10px;padding:6px 14px;background:rgba(255,255,255,.04);border:1px solid rgba(255,182,18,.15);border-radius:8px;margin-left:12px;cursor:default;">
+          <div id="topbarAvatar" style="width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,#d4af37,#a08020);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#000;flex-shrink:0;">A</div>
+          <div style="line-height:1.3;">
+            <div id="topbarUserName" style="font-size:12px;font-weight:600;color:#e0e0e0;white-space:nowrap;">Administrator</div>
+            <div id="topbarUserRole" style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--gold);">Admin</div>
+          </div>
+        </div>
+      </header>
+
+      <!-- CONTENT AREA -->
+      <main class="content-area" id="contentArea">
+
+  <!-- ── DASHBOARD ─────────────────────────────────────────── -->
+  <div class="module-view active" id="view-dashboard">
+    <div class="stat-grid">
+      <div class="stat-card gold">
+        <div class="stat-icon"><i class="fa-solid fa-users"></i></div>
+        <div class="stat-value" id="stat-total-patients">—</div>
+        <div class="stat-label">Total Patients</div>
+      </div>
+      <div class="stat-card blue">
+        <div class="stat-icon"><i class="fa-solid fa-calendar-check"></i></div>
+        <div class="stat-value" id="stat-today-appts">—</div>
+        <div class="stat-label">Today's Appointments</div>
+      </div>
+      <div class="stat-card green" id="stat-card-revenue">
+        <div class="stat-icon"><i class="fa-solid fa-dollar-sign"></i></div>
+        <div class="stat-value" id="stat-monthly-revenue">—</div>
+        <div class="stat-label">Monthly Revenue</div>
+      </div>
+      <div class="stat-card orange">
+        <div class="stat-icon"><i class="fa-solid fa-file-invoice"></i></div>
+        <div class="stat-value" id="stat-pending-claims">—</div>
+        <div class="stat-label">Pending Claims</div>
+      </div>
+    </div>
+    <div class="dashboard-grid">
+      <div class="card card-gold">
+        <div class="card-header">
+          <div class="card-title"><i class="fa-solid fa-calendar-day"></i> Today's Schedule</div>
+          <button class="btn btn-sm btn-outline" onclick="window.App.navigateTo('scheduling')">
+            <i class="fa-solid fa-arrow-right"></i> Full View
+          </button>
+        </div>
+        <div class="card-body" id="dashTodayAppts">
+          <div class="table-empty"><i class="fa-regular fa-calendar"></i><p>No appointments today</p></div>
+        </div>
+      </div>
+      <div class="card card-gold" id="dashRecentClaimsCard">
+        <div class="card-header">
+          <div class="card-title"><i class="fa-solid fa-file-invoice-dollar"></i> Recent Claims</div>
+          <button class="btn btn-sm btn-outline" onclick="window.App.navigateTo('billing')">
+            <i class="fa-solid fa-arrow-right"></i> View All
+          </button>
+        </div>
+        <div class="card-body" id="dashRecentClaims">
+          <div class="table-empty"><i class="fa-regular fa-file"></i><p>No recent claims</p></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── PATIENTS ──────────────────────────────────────────── -->
+  <div class="module-view" id="view-patients"></div>
+
+  <!-- ── SCHEDULING ────────────────────────────────────────── -->
+  <div class="module-view" id="view-scheduling"></div>
+
+  <!-- ── SOAP NOTES ────────────────────────────────────────── -->
+  <div class="module-view" id="view-soap"></div>
+
+  <!-- ── INTAKE FORMS ──────────────────────────────────────── -->
+  <div class="module-view" id="view-intake"></div>
+
+  <!-- ── BILLING ───────────────────────────────────────────── -->
+  <div class="module-view" id="view-billing"></div>
+
+  <!-- ── EOB & RECEIPTS ────────────────────────────────────── -->
+  <div class="module-view" id="view-eob"></div>
+
+  <!-- ── REPORTS ───────────────────────────────────────────── -->
+  <div class="module-view" id="view-reports"></div>
+
+  <!-- ── TRANSPORTATION ────────────────────────────────────── -->
+  <div class="module-view" id="view-transport"></div>
+
+  <!-- ── PI CASES ──────────────────────────────────────────── -->
+  <div class="module-view" id="view-pi"></div>
+
+  <!-- ── WAITLIST ──────────────────────────────────────────── -->
+  <div class="module-view" id="view-waitlist"></div>
+
+  <!-- ── REFERRALS ─────────────────────────────────────────── -->
+  <div class="module-view" id="view-referrals"></div>
+
+  <!-- ── TIME CLOCK ────────────────────────────────────────── -->
+  <div class="module-view" id="view-timeclock"></div>
+
+  <!-- ── REMINDERS ─────────────────────────────────────────── -->
+  <div class="module-view" id="view-reminders"></div>
+
+</main>
+    </div>
+  </div>
+
+  <!-- Toast container -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <!-- Global confirm modal -->
+  <div class="modal-overlay" id="confirmModal">
+    <div class="modal modal-sm">
+      <div class="modal-header">
+        <div class="modal-title"><i class="fa-solid fa-triangle-exclamation"></i> Confirm Action</div>
+        <button class="modal-close" id="confirmModalClose">&times;</button>
+      </div>
+      <div class="modal-body" style="text-align:center;">
+        <div class="confirm-icon"><i class="fa-solid fa-trash"></i></div>
+        <p id="confirmMessage" style="color: var(--text-secondary); font-size:14px;"></p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="confirmCancelBtn">Cancel</button>
+        <button class="btn btn-danger" id="confirmOkBtn">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- JS Modules (api.js must be first) -->
+  <script src="js/api.js"></script>
+  <script src="js/app.js"></script>
+  <script src="js/patients.js"></script>
+  <script src="js/scheduling.js"></script>
+  <script src="js/billing.js"></script>
+  <script src="js/referrals.js"></script>
+  <script src="js/soap.js"></script>
+  <script src="js/intake.js"></script>
+  <script src="js/eob.js"></script>
+  <script src="js/reports.js"></script>
+  <script src="js/transport.js"></script>
+  <script src="js/pi.js"></script>
+  <script src="js/waitlist.js"></script>
+  <script src="js/timeclock.js"></script>
+  <script src="js/reminders.js"></script>
+</body>
+</html>

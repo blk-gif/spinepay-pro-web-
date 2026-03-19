@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: spinepay-pro-web
+    env: node
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: DATABASE_PATH
+        value: /data/spinepay.db
+      - key: PORT
+        value: 10000
+    disk:
+      name: spinepay-data
+      mountPath: /data
+      sizeGB: 1

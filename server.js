@@ -77,7 +77,8 @@ app.use('/api/timeclock',     requireAuth,  require('./routes/timeclock'));
 app.use('/api/reminders',     requireAuth,  require('./routes/reminders'));
 app.use('/api/transportation',requireAuth,  require('./routes/transportation'));
 
-app.get('*', (req, res) => {
+app.use((req, res, next) => {
+  if (req.method !== 'GET') return next();
   if (req.path.startsWith('/api')) return res.status(404).json({ error: 'Not found' });
   const pageName = req.path === '/' ? 'login' : req.path.replace(/^\//, '').split('/')[0];
   const filePath = path.join(__dirname, 'public', 'pages', `${pageName}.html`);

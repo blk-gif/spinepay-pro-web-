@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Staff — SpinePay Pro</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div id="app">
+  <div id="sidebar"><div class="logo"><h1>SpinePay Pro</h1><p>Walden Bailey Chiropractic</p></div><nav id="nav-links"></nav><div class="sidebar-footer" id="sidebar-footer"></div></div>
+  <div id="main">
+    <div id="topbar"><h2>Staff Management</h2><span class="clock" id="clock"></span><span class="user-badge"></span><button class="btn-logout" id="logout-btn">Logout</button></div>
+    <div id="content">
+      <div id="alert-area"></div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">All Staff</span><button class="btn btn-primary" onclick="openStaffModal()">+ Add Staff</button></div>
+        <div class="table-wrap">
+          <table><thead><tr><th>Name</th><th>Username</th><th>Role</th><th>Email</th><th>HIPAA</th><th>Last Login</th><th>Status</th><th>Actions</th></tr></thead>
+          <tbody id="staff-tbody"></tbody></table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="modal-overlay hidden" id="staff-modal">
+  <div class="modal">
+    <div class="modal-header"><span class="modal-title">Add Staff Member</span><button class="modal-close" onclick="closeModal('staff-modal')">×</button></div>
+    <div id="staff-alert"></div>
+    <div class="form-row">
+      <div class="form-group"><label>First Name *</label><input id="sf-first" type="text"></div>
+      <div class="form-group"><label>Last Name *</label><input id="sf-last" type="text"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Username *</label><input id="sf-user" type="text"></div>
+      <div class="form-group"><label>Role</label><select id="sf-role"><option value="Staff">Staff</option><option value="Admin">Admin</option><option value="Billing">Billing</option><option value="Front Desk">Front Desk</option></select></div>
+    </div>
+    <div class="form-group"><label>Email</label><input id="sf-email" type="email"></div>
+    <div class="form-group"><label>Temporary Password *</label><input id="sf-pw" type="password" placeholder="Staff will be prompted to change on first login"></div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('staff-modal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveStaff()">Create Account</button>
+    </div>
+  </div>
+</div>
+<div class="modal-overlay hidden" id="reset-modal">
+  <div class="modal" style="max-width:360px">
+    <div class="modal-header"><span class="modal-title">Reset Password</span><button class="modal-close" onclick="closeModal('reset-modal')">×</button></div>
+    <div id="reset-alert"></div>
+    <div class="form-group"><label>New Temporary Password</label><input id="r-pw" type="password" minlength="8"></div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('reset-modal')">Cancel</button>
+      <button class="btn btn-primary" onclick="doReset()">Reset</button>
+    </div>
+  </div>
+</div>
+<script src="/js/app.js"></script>
+<script>
+let staffList=[], resetId=null;
+async function loadStaff(){
+  staffList=await GET('/api/staff').catch(()=>[]);
+  const tb=document.getElementById('staff-tbody');
+  if(!staffList.length){tb.innerHTML='<tr><td colspan="8"><div class="empty-state"><div class="icon">👤</div><p>No staff</p></div></td></tr>';return;}
+  tb.innerHTML=staffList.map(s=>`<tr>
+    <td><strong>${escHtml(s.first_name+' '+s.last_name)}</strong></td>
+    <td>${escHtml(s.username)}</td>
+    <td><span class="badge ${s.role==='Admin'?'badge-gold':'badge-blue'}">${s.role}</span></td>
+    <td>${escHtml(s.email||'—')}</td>
+    <td>${s.hipaa_signed?'<span class="badge badge-green">Signed</span>':'<span class="badge badge-yellow">Pending</span>'}</td>
+    <td>${s.last_login?new Date(s.last_login).toLocaleString():'Never'}</td>
+    <td>${statusBadge(s.active?'active':'inactive')}</td>
+    <td><div class="actions">
+      <button class="btn btn-sm btn-outline" onclick="openReset(${s.id})">Reset PW</button>
+      <button class="btn btn-sm ${s.active?'btn-danger':'btn-outline'}" onclick="toggleActive(${s.id},${!s.active})">${s.active?'Deactivate':'Activate'}</button>
+    </div></td>
+  </tr>`).join('');
+}
+function openStaffModal(){['first','last','user','email','pw'].forEach(f=>document.getElementById('sf-'+f).value='');document.getElementById('sf-role').value='Staff';openModal('staff-modal');}
+async function saveStaff(){
+  const data={first_name:document.getElementById('sf-first').value.trim(),last_name:document.getElementById('sf-last').value.trim(),username:document.getElementById('sf-user').value.trim(),role:document.getElementById('sf-role').value,email:document.getElementById('sf-email').value.trim()||null,temp_password_plain:document.getElementById('sf-pw').value};
+  if(!data.first_name||!data.last_name||!data.username||!data.temp_password_plain){document.getElementById('staff-alert').innerHTML='<div class="alert alert-error">All required fields must be filled</div>';return;}
+  try{await POST('/api/staff',data);closeModal('staff-modal');loadStaff();showAlert('Staff member created successfully','success');}catch(e){document.getElementById('staff-alert').innerHTML='<div class="alert alert-error">'+e.message+'</div>';}
+}
+function openReset(id){resetId=id;document.getElementById('r-pw').value='';openModal('reset-modal');}
+async function doReset(){
+  const pw=document.getElementById('r-pw').value;
+  if(pw.length<8){document.getElementById('reset-alert').innerHTML='<div class="alert alert-error">Min 8 characters</div>';return;}
+  try{await POST('/api/staff/'+resetId+'/reset-password',{newPassword:pw});closeModal('reset-modal');showAlert('Password reset. Staff will be prompted to change it.','success');}catch(e){document.getElementById('reset-alert').innerHTML='<div class="alert alert-error">'+e.message+'</div>';}
+}
+async function toggleActive(id,active){await PATCH('/api/staff/'+id+'/active',{active}).catch(e=>showAlert(e.message));loadStaff();}
+(async()=>{await requireLogin();loadStaff();})();
+</script>
+</body>
+</html>

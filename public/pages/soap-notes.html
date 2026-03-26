@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>SOAP Notes — SpinePay Pro</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div id="app">
+  <div id="sidebar"><div class="logo"><h1>SpinePay Pro</h1><p>Walden Bailey Chiropractic</p></div><nav id="nav-links"></nav><div class="sidebar-footer" id="sidebar-footer"></div></div>
+  <div id="main">
+    <div id="topbar">
+      <h2>SOAP Notes</h2>
+      <span class="clock" id="clock"></span>
+      <span class="user-badge"></span>
+      <button class="btn-logout" id="logout-btn">Logout</button>
+    </div>
+    <div id="content">
+      <div id="alert-area"></div>
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Clinical Notes</span>
+          <button class="btn btn-primary" onclick="openNoteModal()">+ New Note</button>
+        </div>
+        <div class="table-wrap">
+          <table><thead><tr><th>Date</th><th>Patient</th><th>Provider</th><th>ICD Codes</th><th>CPT Codes</th><th>Signed</th><th>Actions</th></tr></thead>
+          <tbody id="notes-tbody"></tbody></table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay hidden" id="note-modal">
+  <div class="modal" style="max-width:700px">
+    <div class="modal-header"><span class="modal-title" id="note-modal-title">New SOAP Note</span><button class="modal-close" onclick="closeModal('note-modal')">×</button></div>
+    <div id="note-alert"></div>
+    <div class="form-row">
+      <div class="form-group"><label>Patient Name</label><input id="n-patient" type="text"></div>
+      <div class="form-group"><label>Date</label><input id="n-date" type="date"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Provider</label><input id="n-provider" type="text" value="Dr. Walden Bailey"></div>
+      <div class="form-group"><label>ICD Codes</label><input id="n-icd" type="text" placeholder="e.g. M54.5, M47.816"></div>
+    </div>
+    <div class="form-group"><label>CPT Codes</label><input id="n-cpt" type="text" placeholder="e.g. 98940, 97110"></div>
+    <div class="form-group"><label>S — Subjective</label><textarea id="n-subj" style="min-height:70px" placeholder="Patient's chief complaint and history…"></textarea></div>
+    <div class="form-group"><label>O — Objective</label><textarea id="n-obj" style="min-height:70px" placeholder="Examination findings, vitals, test results…"></textarea></div>
+    <div class="form-group"><label>A — Assessment</label><textarea id="n-assess" style="min-height:70px" placeholder="Diagnosis and clinical impression…"></textarea></div>
+    <div class="form-group"><label>P — Plan</label><textarea id="n-plan" style="min-height:70px" placeholder="Treatment plan, follow-up, referrals…"></textarea></div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('note-modal')">Cancel</button>
+      <button class="btn btn-outline" onclick="saveNote(false)">Save Draft</button>
+      <button class="btn btn-primary" onclick="saveNote(true)">Save & Sign</button>
+    </div>
+  </div>
+</div>
+
+<script src="/js/app.js"></script>
+<script>
+let notes = [], editNoteId = null;
+
+async function loadNotes() {
+  notes = await GET('/api/soap-notes').catch(() => []);
+  const tb = document.getElementById('notes-tbody');
+  if (!notes.length) { tb.innerHTML = '<tr><td colspan="7"><div class="empty-state"><div class="icon">📝</div><p>No SOAP notes yet</p></div></td></tr>'; return; }
+  tb.innerHTML = notes.map(n => `<tr>
+    <td>${fmtDate(n.note_date||n.created_at)}</td>
+    <td>${escHtml((n.first_name||n.patient_name||'')+(n.last_name?' '+n.last_name:''))}</td>
+    <td>${escHtml(n.provider||'—')}</td>
+    <td><code style="font-size:11px">${escHtml(n.icd_codes||'—')}</code></td>
+    <td><code style="font-size:11px">${escHtml(n.cpt_codes||'—')}</code></td>
+    <td>${n.signed ? '<span class="badge badge-green">Signed</span>' : '<span class="badge badge-yellow">Draft</span>'}</td>
+    <td><div class="actions">
+      <button class="btn btn-sm btn-outline" onclick="editNote(${n.id})">Edit</button>
+    </div></td>
+  </tr>`).join('');
+}
+
+function openNoteModal() {
+  editNoteId = null;
+  document.getElementById('note-modal-title').textContent = 'New SOAP Note';
+  ['patient','icd','cpt','subj','obj','assess','plan'].forEach(f => { document.getElementById('n-'+f).value=''; });
+  document.getElementById('n-date').value = new Date().toISOString().split('T')[0];
+  document.getElementById('n-provider').value = 'Dr. Walden Bailey';
+  openModal('note-modal');
+}
+
+function editNote(id) {
+  const n = notes.find(x => x.id === id);
+  if (!n) return;
+  editNoteId = id;
+  document.getElementById('note-modal-title').textContent = 'Edit SOAP Note';
+  document.getElementById('n-patient').value  = (n.first_name||n.patient_name||'')+(n.last_name?' '+n.last_name:'');
+  document.getElementById('n-date').value     = n.note_date ? n.note_date.split('T')[0] : '';
+  document.getElementById('n-provider').value = n.provider||'';
+  document.getElementById('n-icd').value      = n.icd_codes||'';
+  document.getElementById('n-cpt').value      = n.cpt_codes||'';
+  document.getElementById('n-subj').value     = n.subjective||'';
+  document.getElementById('n-obj').value      = n.objective||'';
+  document.getElementById('n-assess').value   = n.assessment||'';
+  document.getElementById('n-plan').value     = n.plan||'';
+  openModal('note-modal');
+}
+
+async function saveNote(sign) {
+  const data = {
+    patient_name: document.getElementById('n-patient').value.trim(),
+    note_date: document.getElementById('n-date').value||null,
+    provider: document.getElementById('n-provider').value.trim(),
+    icd_codes: document.getElementById('n-icd').value.trim()||null,
+    cpt_codes: document.getElementById('n-cpt').value.trim()||null,
+    subjective: document.getElementById('n-subj').value.trim()||null,
+    objective: document.getElementById('n-obj').value.trim()||null,
+    assessment: document.getElementById('n-assess').value.trim()||null,
+    plan: document.getElementById('n-plan').value.trim()||null,
+    signed: sign,
+  };
+  try {
+    if (editNoteId) await PUT('/api/soap-notes/'+editNoteId, data);
+    else await POST('/api/soap-notes', data);
+    closeModal('note-modal'); loadNotes();
+  } catch (err) { document.getElementById('note-alert').innerHTML = '<div class="alert alert-error">'+err.message+'</div>'; }
+}
+
+(async () => { await requireLogin(); loadNotes(); })();
+</script>
+</body>
+</html>

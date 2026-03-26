@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Time Clock — SpinePay Pro</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div id="app">
+  <div id="sidebar"><div class="logo"><h1>SpinePay Pro</h1><p>Walden Bailey Chiropractic</p></div><nav id="nav-links"></nav><div class="sidebar-footer" id="sidebar-footer"></div></div>
+  <div id="main">
+    <div id="topbar"><h2>Time Clock</h2><span class="clock" id="clock"></span><span class="user-badge"></span><button class="btn-logout" id="logout-btn">Logout</button></div>
+    <div id="content">
+      <div id="alert-area"></div>
+      <div class="card" style="max-width:400px;margin:0 auto 24px">
+        <div style="text-align:center;padding:8px 0">
+          <div id="clock-status" style="font-size:24px;font-weight:700;color:var(--gold);margin-bottom:8px">—</div>
+          <div id="clock-since" style="color:var(--text-muted);font-size:13px;margin-bottom:20px"></div>
+          <div style="display:flex;gap:12px;justify-content:center">
+            <button class="btn btn-primary" id="btn-in" onclick="clockIn()">Clock In</button>
+            <button class="btn btn-danger" id="btn-out" onclick="clockOut()" style="display:none">Clock Out</button>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Time Entries</span>
+          <div style="display:flex;gap:8px">
+            <input type="date" id="tc-start" style="background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px">
+            <input type="date" id="tc-end" style="background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px">
+            <button class="btn btn-outline" onclick="loadEntries()">Filter</button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table><thead><tr><th>Employee</th><th>Clock In</th><th>Clock Out</th><th>Hours</th><th>Approved</th></tr></thead>
+          <tbody id="tc-tbody"></tbody></table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<script src="/js/app.js"></script>
+<script>
+let me = null;
+async function loadStatus() {
+  const s = await GET('/api/timeclock/status/' + me.id).catch(() => null);
+  const statusEl = document.getElementById('clock-status');
+  const sinceEl = document.getElementById('clock-since');
+  const btnIn = document.getElementById('btn-in');
+  const btnOut = document.getElementById('btn-out');
+  if (s) {
+    statusEl.textContent = 'Clocked In';
+    statusEl.style.color = 'var(--success)';
+    sinceEl.textContent = 'Since ' + new Date(s.clock_in).toLocaleTimeString();
+    btnIn.style.display = 'none'; btnOut.style.display = '';
+  } else {
+    statusEl.textContent = 'Clocked Out';
+    statusEl.style.color = 'var(--text-muted)';
+    sinceEl.textContent = '';
+    btnIn.style.display = ''; btnOut.style.display = 'none';
+  }
+}
+async function clockIn() { await POST('/api/timeclock/clock-in', {}).catch(e => showAlert(e.message)); loadStatus(); loadEntries(); }
+async function clockOut() { await POST('/api/timeclock/clock-out', {}).catch(e => showAlert(e.message)); loadStatus(); loadEntries(); }
+async function loadEntries() {
+  const s = document.getElementById('tc-start').value, e = document.getElementById('tc-end').value;
+  let url = '/api/timeclock?start=' + s + '&end=' + e;
+  if (me.role !== 'Admin') url += '&staff_id=' + me.id;
+  const list = await GET(url).catch(() => []);
+  const tb = document.getElementById('tc-tbody');
+  if (!list.length) { tb.innerHTML = '<tr><td colspan="5"><div class="empty-state"><div class="icon">⏱️</div><p>No entries</p></div></td></tr>'; return; }
+  tb.innerHTML = list.map(e => `<tr>
+    <td>${escHtml((e.first_name||'')+(e.last_name?' '+e.last_name:''))}</td>
+    <td>${e.clock_in ? new Date(e.clock_in).toLocaleString() : '—'}</td>
+    <td>${e.clock_out ? new Date(e.clock_out).toLocaleString() : '<span class="badge badge-green">Active</span>'}</td>
+    <td>${e.total_hours != null ? e.total_hours + 'h' : '—'}</td>
+    <td>${e.approved ? '<span class="badge badge-green">Yes</span>' : (me.role==='Admin'?'<button class="btn btn-sm btn-outline" onclick="approve('+e.id+')">Approve</button>':'<span class="badge badge-yellow">Pending</span>')}</td>
+  </tr>`).join('');
+}
+async function approve(id) { await PATCH('/api/timeclock/'+id+'/approve', {}).catch(e=>showAlert(e.message)); loadEntries(); }
+(async () => {
+  me = await requireLogin();
+  if (!me) return;
+  const today = new Date().toISOString().split('T')[0];
+  const firstDay = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
+  document.getElementById('tc-start').value = firstDay;
+  document.getElementById('tc-end').value = today;
+  loadStatus(); loadEntries();
+})();
+</script>
+</body>
+</html>

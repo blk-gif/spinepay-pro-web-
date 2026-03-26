@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Patients — SpinePay Pro</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div id="app">
+  <div id="sidebar"><div class="logo"><h1>SpinePay Pro</h1><p>Walden Bailey Chiropractic</p></div><nav id="nav-links"></nav><div class="sidebar-footer" id="sidebar-footer"></div></div>
+  <div id="main">
+    <div id="topbar">
+      <h2>Patients</h2>
+      <div class="search-wrap"><input type="text" id="search" placeholder="Search patients…" oninput="searchPatients(this.value)"></div>
+      <span class="clock" id="clock"></span>
+      <span class="user-badge"></span>
+      <button class="btn-logout" id="logout-btn">Logout</button>
+    </div>
+    <div id="content">
+      <div id="alert-area"></div>
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">All Patients</span>
+          <button class="btn btn-primary" onclick="openModal('patient-modal');setModalMode('add')">+ New Patient</button>
+        </div>
+        <div class="table-wrap">
+          <table><thead><tr><th>Name</th><th>DOB</th><th>Phone</th><th>Email</th><th>Insurance</th><th>Status</th><th>Actions</th></tr></thead>
+          <tbody id="patients-tbody"><tr><td colspan="7" style="text-align:center;padding:32px;color:var(--text-muted)">Loading…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Patient Modal -->
+<div class="modal-overlay hidden" id="patient-modal">
+  <div class="modal" style="max-width:640px">
+    <div class="modal-header"><span class="modal-title" id="modal-title">New Patient</span><button class="modal-close" onclick="closeModal('patient-modal')">×</button></div>
+    <div id="modal-alert"></div>
+    <div class="form-row">
+      <div class="form-group"><label>First Name *</label><input id="f-first" type="text"></div>
+      <div class="form-group"><label>Last Name *</label><input id="f-last" type="text"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Date of Birth</label><input id="f-dob" type="date"></div>
+      <div class="form-group"><label>Gender</label><select id="f-gender"><option value="">—</option><option>Male</option><option>Female</option><option>Other</option></select></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Phone</label><input id="f-phone" type="tel"></div>
+      <div class="form-group"><label>Email</label><input id="f-email" type="email"></div>
+    </div>
+    <div class="form-group"><label>Address</label><input id="f-address" type="text"></div>
+    <div class="form-row">
+      <div class="form-group"><label>City</label><input id="f-city" type="text"></div>
+      <div class="form-group"><label>State</label><input id="f-state" type="text" style="max-width:80px"></div>
+      <div class="form-group"><label>ZIP</label><input id="f-zip" type="text" style="max-width:100px"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Insurance Provider</label><input id="f-ins" type="text"></div>
+      <div class="form-group"><label>Insurance ID</label><input id="f-ins-id" type="text"></div>
+    </div>
+    <div class="form-group"><label>Notes</label><textarea id="f-notes"></textarea></div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('patient-modal')">Cancel</button>
+      <button class="btn btn-primary" onclick="savePatient()">Save Patient</button>
+    </div>
+  </div>
+</div>
+
+<script src="/js/app.js"></script>
+<script>
+let patients = [], editId = null;
+
+async function loadPatients() {
+  patients = await GET('/api/patients').catch(() => []);
+  renderTable(patients);
+}
+
+function renderTable(list) {
+  const tb = document.getElementById('patients-tbody');
+  if (!list.length) { tb.innerHTML = '<tr><td colspan="7"><div class="empty-state"><div class="icon">👥</div><p>No patients found</p></div></td></tr>'; return; }
+  tb.innerHTML = list.map(p => `<tr>
+    <td><strong>${escHtml(p.first_name+' '+p.last_name)}</strong></td>
+    <td>${fmtDate(p.dob)}</td>
+    <td>${escHtml(p.phone||'—')}</td>
+    <td>${escHtml(p.email||'—')}</td>
+    <td>${escHtml(p.insurance_name||'—')}</td>
+    <td>${statusBadge(p.status)}</td>
+    <td><div class="actions">
+      <button class="btn btn-sm btn-outline" onclick="editPatient(${p.id})">Edit</button>
+    </div></td>
+  </tr>`).join('');
+}
+
+let searchTimer;
+function searchPatients(q) {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(async () => {
+    if (q.length < 2) { renderTable(patients); return; }
+    const res = await GET('/api/patients?search=' + encodeURIComponent(q)).catch(() => []);
+    renderTable(res);
+  }, 300);
+}
+
+function setModalMode(mode) {
+  document.getElementById('modal-title').textContent = mode === 'add' ? 'New Patient' : 'Edit Patient';
+  if (mode === 'add') { editId = null; ['first','last','dob','gender','phone','email','address','city','state','zip','ins','ins-id','notes'].forEach(f => { const el = document.getElementById('f-'+f); if (el) el.value = ''; }); }
+}
+
+function editPatient(id) {
+  const p = patients.find(x => x.id === id);
+  if (!p) return;
+  editId = id;
+  document.getElementById('modal-title').textContent = 'Edit Patient';
+  document.getElementById('f-first').value = p.first_name||'';
+  document.getElementById('f-last').value  = p.last_name||'';
+  document.getElementById('f-dob').value   = p.dob ? p.dob.split('T')[0] : '';
+  document.getElementById('f-gender').value = p.gender||'';
+  document.getElementById('f-phone').value  = p.phone||'';
+  document.getElementById('f-email').value  = p.email||'';
+  document.getElementById('f-address').value = p.address||'';
+  document.getElementById('f-city').value   = p.city||'';
+  document.getElementById('f-state').value  = p.state||'';
+  document.getElementById('f-zip').value    = p.zip||'';
+  document.getElementById('f-ins').value    = p.insurance_name||'';
+  document.getElementById('f-ins-id').value = p.insurance_id||'';
+  document.getElementById('f-notes').value  = p.notes||'';
+  openModal('patient-modal');
+}
+
+async function savePatient() {
+  const data = {
+    first_name: document.getElementById('f-first').value.trim(),
+    last_name:  document.getElementById('f-last').value.trim(),
+    dob: document.getElementById('f-dob').value || null,
+    gender: document.getElementById('f-gender').value || null,
+    phone: document.getElementById('f-phone').value.trim() || null,
+    email: document.getElementById('f-email').value.trim() || null,
+    address: document.getElementById('f-address').value.trim() || null,
+    city: document.getElementById('f-city').value.trim() || null,
+    state: document.getElementById('f-state').value.trim() || null,
+    zip: document.getElementById('f-zip').value.trim() || null,
+    insurance_name: document.getElementById('f-ins').value.trim() || null,
+    insurance_id: document.getElementById('f-ins-id').value.trim() || null,
+    notes: document.getElementById('f-notes').value.trim() || null,
+  };
+  if (!data.first_name || !data.last_name) { document.getElementById('modal-alert').innerHTML = '<div class="alert alert-error">First and last name required</div>'; return; }
+  try {
+    if (editId) await PUT('/api/patients/' + editId, data);
+    else await POST('/api/patients', data);
+    closeModal('patient-modal');
+    loadPatients();
+  } catch (err) { document.getElementById('modal-alert').innerHTML = '<div class="alert alert-error">' + err.message + '</div>'; }
+}
+
+(async () => { await requireLogin(); loadPatients(); })();
+</script>
+</body>
+</html>

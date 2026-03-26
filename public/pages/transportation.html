@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Transportation — SpinePay Pro</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div id="app">
+  <div id="sidebar"><div class="logo"><h1>SpinePay Pro</h1><p>Walden Bailey Chiropractic</p></div><nav id="nav-links"></nav><div class="sidebar-footer" id="sidebar-footer"></div></div>
+  <div id="main">
+    <div id="topbar"><h2>Transportation</h2><span class="clock" id="clock"></span><span class="user-badge"></span><button class="btn-logout" id="logout-btn">Logout</button></div>
+    <div id="content">
+      <div id="alert-area"></div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">Transport Requests</span><button class="btn btn-primary" onclick="openTransModal()">+ New Request</button></div>
+        <div class="table-wrap">
+          <table><thead><tr><th>Patient</th><th>Pickup</th><th>Dropoff</th><th>Driver</th><th>Status</th><th>Actions</th></tr></thead>
+          <tbody id="trans-tbody"></tbody></table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="modal-overlay hidden" id="trans-modal">
+  <div class="modal">
+    <div class="modal-header"><span class="modal-title">New Transport Request</span><button class="modal-close" onclick="closeModal('trans-modal')">×</button></div>
+    <div id="trans-alert"></div>
+    <div class="form-row">
+      <div class="form-group"><label>Patient Name</label><input id="tr-patient" type="text"></div>
+      <div class="form-group"><label>Pickup Time</label><input id="tr-time" type="datetime-local"></div>
+    </div>
+    <div class="form-group"><label>Pickup Address</label><input id="tr-pickup" type="text"></div>
+    <div class="form-group"><label>Dropoff Address</label><input id="tr-dropoff" type="text"></div>
+    <div class="form-row">
+      <div class="form-group"><label>Driver Name</label><input id="tr-driver" type="text"></div>
+      <div class="form-group"><label>Status</label><select id="tr-status"><option value="requested">Requested</option><option value="confirmed">Confirmed</option><option value="completed">Completed</option><option value="cancelled">Cancelled</option></select></div>
+    </div>
+    <div class="form-group"><label>Notes</label><textarea id="tr-notes"></textarea></div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('trans-modal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveTrans()">Save</button>
+    </div>
+  </div>
+</div>
+<script src="/js/app.js"></script>
+<script>
+let transports = [], editTransId = null;
+async function loadTrans(){
+  transports=await GET('/api/transportation').catch(()=>[]);
+  const tb=document.getElementById('trans-tbody');
+  if(!transports.length){tb.innerHTML='<tr><td colspan="6"><div class="empty-state"><div class="icon">🚗</div><p>No transport requests</p></div></td></tr>';return;}
+  tb.innerHTML=transports.map(t=>`<tr>
+    <td>${escHtml(t.patient_name||(t.first_name?(t.first_name+' '+t.last_name):'—'))}</td>
+    <td>${escHtml(t.pickup_address||'—')}</td>
+    <td>${escHtml(t.dropoff_address||'—')}</td>
+    <td>${escHtml(t.driver_name||'—')}</td>
+    <td>${statusBadge(t.status)}</td>
+    <td><div class="actions">
+      <button class="btn btn-sm btn-outline" onclick="editTrans(${t.id})">Edit</button>
+      <button class="btn btn-sm btn-danger" onclick="deleteTrans(${t.id})">Delete</button>
+    </div></td>
+  </tr>`).join('');
+}
+function openTransModal(){editTransId=null;['patient','pickup','dropoff','driver','notes'].forEach(f=>{document.getElementById('tr-'+f).value='';});document.getElementById('tr-time').value='';document.getElementById('tr-status').value='requested';openModal('trans-modal');}
+function editTrans(id){const t=transports.find(x=>x.id===id);if(!t)return;editTransId=id;document.getElementById('tr-patient').value=t.patient_name||'';document.getElementById('tr-pickup').value=t.pickup_address||'';document.getElementById('tr-dropoff').value=t.dropoff_address||'';document.getElementById('tr-driver').value=t.driver_name||'';document.getElementById('tr-notes').value=t.driver_notes||'';document.getElementById('tr-status').value=t.status||'requested';openModal('trans-modal');}
+async function saveTrans(){
+  const data={patient_name:document.getElementById('tr-patient').value.trim(),pickup_address:document.getElementById('tr-pickup').value.trim()||null,pickup_time:document.getElementById('tr-time').value||null,dropoff_address:document.getElementById('tr-dropoff').value.trim()||null,driver_name:document.getElementById('tr-driver').value.trim()||null,driver_notes:document.getElementById('tr-notes').value.trim()||null,status:document.getElementById('tr-status').value};
+  try{if(editTransId)await PUT('/api/transportation/'+editTransId,data);else await POST('/api/transportation',data);closeModal('trans-modal');loadTrans();}catch(e){document.getElementById('trans-alert').innerHTML='<div class="alert alert-error">'+e.message+'</div>';}
+}
+async function deleteTrans(id){if(!confirm('Delete request?'))return;await DEL('/api/transportation/'+id).catch(e=>showAlert(e.message));loadTrans();}
+(async()=>{await requireLogin();loadTrans();})();
+</script>
+</body>
+</html>

@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Intake Forms — SpinePay Pro</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div id="app">
+  <div id="sidebar"><div class="logo"><h1>SpinePay Pro</h1><p>Walden Bailey Chiropractic</p></div><nav id="nav-links"></nav><div class="sidebar-footer" id="sidebar-footer"></div></div>
+  <div id="main">
+    <div id="topbar"><h2>Intake Forms</h2><span class="clock" id="clock"></span><span class="user-badge"></span><button class="btn-logout" id="logout-btn">Logout</button></div>
+    <div id="content">
+      <div id="alert-area"></div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">Patient Intake Forms</span><button class="btn btn-primary" onclick="openIntakeModal()">+ New Form</button></div>
+        <div class="table-wrap">
+          <table><thead><tr><th>Patient</th><th>Date</th><th>Reason for Visit</th><th>Pain Scale</th><th>HIPAA</th><th>Actions</th></tr></thead>
+          <tbody id="intake-tbody"></tbody></table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="modal-overlay hidden" id="intake-modal">
+  <div class="modal" style="max-width:640px">
+    <div class="modal-header"><span class="modal-title">New Intake Form</span><button class="modal-close" onclick="closeModal('intake-modal')">×</button></div>
+    <div id="intake-alert"></div>
+    <div class="form-row">
+      <div class="form-group"><label>Full Name *</label><input id="if-name" type="text"></div>
+      <div class="form-group"><label>Date of Birth</label><input id="if-dob" type="date"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Phone</label><input id="if-phone" type="tel"></div>
+      <div class="form-group"><label>Email</label><input id="if-email" type="email"></div>
+    </div>
+    <div class="form-group"><label>Address</label><input id="if-address" type="text"></div>
+    <div class="form-row">
+      <div class="form-group"><label>Insurance Provider</label><input id="if-ins" type="text"></div>
+      <div class="form-group"><label>Policy Number</label><input id="if-policy" type="text"></div>
+    </div>
+    <div class="form-group"><label>Reason for Visit</label><textarea id="if-reason"></textarea></div>
+    <div class="form-row">
+      <div class="form-group"><label>Pain Scale (1-10)</label><input id="if-pain" type="number" min="1" max="10"></div>
+      <div class="form-group"><label>Allergies</label><input id="if-allergies" type="text"></div>
+    </div>
+    <div class="form-group"><label>Current Medications</label><textarea id="if-meds" style="min-height:60px"></textarea></div>
+    <div class="form-group"><label>Medical History</label><textarea id="if-history" style="min-height:60px"></textarea></div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('intake-modal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveIntake()">Save Form</button>
+    </div>
+  </div>
+</div>
+<script src="/js/app.js"></script>
+<script>
+async function loadIntake(){
+  const list=await GET('/api/intake').catch(()=>[]);
+  const tb=document.getElementById('intake-tbody');
+  if(!list.length){tb.innerHTML='<tr><td colspan="6"><div class="empty-state"><div class="icon">📋</div><p>No intake forms</p></div></td></tr>';return;}
+  tb.innerHTML=list.map(f=>`<tr>
+    <td>${escHtml(f.full_name||(f.first_name?(f.first_name+' '+f.last_name):'—'))}</td>
+    <td>${fmtDate(f.submitted_at)}</td>
+    <td>${escHtml((f.reason_for_visit||'').slice(0,50))}</td>
+    <td>${f.pain_scale!=null?f.pain_scale+'/10':'—'}</td>
+    <td>${f.hipaa_acknowledged?'<span class="badge badge-green">Signed</span>':'<span class="badge badge-yellow">Pending</span>'}</td>
+    <td><button class="btn btn-sm btn-outline" onclick="viewIntake(${f.id})">View</button></td>
+  </tr>`).join('');
+}
+function openIntakeModal(){['name','dob','phone','email','address','ins','policy','reason','allergies','meds','history'].forEach(f=>{const el=document.getElementById('if-'+f);if(el)el.value='';});document.getElementById('if-pain').value='';openModal('intake-modal');}
+async function saveIntake(){
+  const data={full_name:document.getElementById('if-name').value.trim(),dob:document.getElementById('if-dob').value||null,phone:document.getElementById('if-phone').value.trim()||null,email:document.getElementById('if-email').value.trim()||null,address:document.getElementById('if-address').value.trim()||null,insurance_provider:document.getElementById('if-ins').value.trim()||null,policy_number:document.getElementById('if-policy').value.trim()||null,reason_for_visit:document.getElementById('if-reason').value.trim()||null,pain_scale:parseInt(document.getElementById('if-pain').value)||null,allergies:document.getElementById('if-allergies').value.trim()||null,current_medications:document.getElementById('if-meds').value.trim()||null,medical_history:document.getElementById('if-history').value.trim()||null,hipaa_acknowledged:false};
+  if(!data.full_name){document.getElementById('intake-alert').innerHTML='<div class="alert alert-error">Full name required</div>';return;}
+  try{await POST('/api/intake',data);closeModal('intake-modal');loadIntake();}catch(e){document.getElementById('intake-alert').innerHTML='<div class="alert alert-error">'+e.message+'</div>';}
+}
+async function viewIntake(id){const f=await GET('/api/intake/'+id).catch(()=>null);if(!f)return;alert('Intake Form #'+id+'\n\nPatient: '+f.full_name+'\nReason: '+f.reason_for_visit+'\nPain: '+f.pain_scale+'/10\nMeds: '+f.current_medications+'\nAllergies: '+f.allergies+'\nHistory: '+f.medical_history);}
+(async()=>{await requireLogin();loadIntake();})();
+</script>
+</body>
+</html>

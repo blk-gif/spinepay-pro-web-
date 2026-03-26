@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>SpinePay Pro — Login</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <style>body{display:flex;align-items:center;justify-content:center;min-height:100vh;background:var(--bg)}</style>
+</head>
+<body>
+<div class="login-box" style="max-width:420px;width:100%">
+  <div class="login-logo">
+    <h1>SpinePay Pro</h1>
+    <p>Walden Bailey Chiropractic</p>
+  </div>
+  <div id="alert-area"></div>
+
+  <!-- Step 0: Login -->
+  <div class="login-step active" id="step-login">
+    <form id="login-form">
+      <div class="form-group">
+        <label>Username</label>
+        <input type="text" id="username" autocomplete="username" required>
+      </div>
+      <div class="form-group">
+        <label>Password</label>
+        <input type="password" id="password" autocomplete="current-password" required>
+      </div>
+      <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center" id="login-btn">Sign In</button>
+    </form>
+  </div>
+
+  <!-- Step 1: Change Password -->
+  <div class="login-step" id="step-password">
+    <p class="step-title">🔐 Set Your Password</p>
+    <p style="color:var(--text-muted);font-size:13px;margin-bottom:16px">Your account has a temporary password. Please create a new password to continue.</p>
+    <form id="pw-form">
+      <div class="form-group">
+        <label>New Password</label>
+        <input type="password" id="new-pw" minlength="8" required placeholder="Min. 8 characters">
+      </div>
+      <div class="form-group">
+        <label>Confirm Password</label>
+        <input type="password" id="confirm-pw" required>
+      </div>
+      <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center">Set Password & Continue</button>
+    </form>
+  </div>
+
+  <!-- Step 2: HIPAA Acknowledgment -->
+  <div class="login-step" id="step-hipaa">
+    <p class="step-title">📋 HIPAA Acknowledgment</p>
+    <div class="hipaa-text" id="hipaa-text">
+      <strong>HIPAA Privacy & Security Policy — Walden Bailey Chiropractic</strong><br><br>
+      As an employee or authorized user of this practice management system, you are required to comply with the Health Insurance Portability and Accountability Act (HIPAA) of 1996 and all subsequent amendments.<br><br>
+      <strong>Your Responsibilities:</strong><br>
+      1. Access only the minimum necessary patient information required to perform your job duties.<br>
+      2. Never share your login credentials with any other person.<br>
+      3. Log out of the system when leaving your workstation unattended.<br>
+      4. Never copy, print, email, or transmit patient information to unauthorized parties.<br>
+      5. Report any suspected breach or unauthorized access immediately to the Privacy Officer.<br>
+      6. Patient records accessed through this system are confidential and protected by federal law.<br><br>
+      <strong>Violations:</strong><br>
+      Violations of HIPAA may result in civil penalties up to $50,000 per violation, criminal penalties up to $250,000 and 10 years imprisonment, and immediate termination of employment.<br><br>
+      <strong>Acknowledgment:</strong><br>
+      By signing below, you acknowledge that you have read, understand, and agree to comply with all HIPAA privacy and security requirements as outlined in this policy and in the practice's full HIPAA Policy Manual.
+    </div>
+    <div class="form-group">
+      <label>Digital Signature (type your full name)</label>
+      <input type="text" id="hipaa-sig" placeholder="Type your full name to sign" required>
+    </div>
+    <button onclick="submitHipaa()" class="btn btn-primary" style="width:100%;justify-content:center">I Agree & Sign</button>
+  </div>
+
+  <!-- Step 3: Done -->
+  <div class="login-step" id="step-done">
+    <div style="text-align:center;padding:20px 0">
+      <div style="font-size:48px;margin-bottom:12px">✅</div>
+      <p class="step-title">Onboarding Complete!</p>
+      <p style="color:var(--text-muted);font-size:13px;margin-bottom:20px">Your account is set up. Redirecting to dashboard…</p>
+      <div style="height:3px;background:var(--bg3);border-radius:2px;overflow:hidden"><div id="progress-bar" style="height:100%;background:var(--gold);width:0%;transition:width 2s linear"></div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+let staffSession = null;
+
+function showStep(id) {
+  document.querySelectorAll('.login-step').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+document.getElementById('login-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const btn = document.getElementById('login-btn');
+  btn.disabled = true; btn.textContent = 'Signing in…';
+  const username = document.getElementById('username').value.trim();
+  const password = document.getElementById('password').value;
+  try {
+    const res = await fetch('/api/auth/login', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ username, password })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Login failed');
+    staffSession = data.staff;
+    if (data.requiresOnboarding) {
+      showStep(data.staff.temp_password ? 'step-password' : 'step-hipaa');
+    } else {
+      window.location.href = '/dashboard';
+    }
+  } catch (err) {
+    document.getElementById('alert-area').innerHTML = '<div class="alert alert-error">' + err.message + '</div>';
+    btn.disabled = false; btn.textContent = 'Sign In';
+  }
+});
+
+document.getElementById('pw-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const np = document.getElementById('new-pw').value;
+  const cp = document.getElementById('confirm-pw').value;
+  if (np !== cp) { document.getElementById('alert-area').innerHTML = '<div class="alert alert-error">Passwords do not match</div>'; return; }
+  try {
+    const res = await fetch('/api/auth/change-password', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ newPassword: np })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    staffSession.temp_password = false;
+    if (!staffSession.hipaa_signed) showStep('step-hipaa');
+    else { showStep('step-done'); completeDone(); }
+  } catch (err) {
+    document.getElementById('alert-area').innerHTML = '<div class="alert alert-error">' + err.message + '</div>';
+  }
+});
+
+async function submitHipaa() {
+  const sig = document.getElementById('hipaa-sig').value.trim();
+  if (!sig) { document.getElementById('alert-area').innerHTML = '<div class="alert alert-error">Please type your full name to sign</div>'; return; }
+  try {
+    const res = await fetch('/api/auth/hipaa-sign', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ signature: sig })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    showStep('step-done'); completeDone();
+  } catch (err) {
+    document.getElementById('alert-area').innerHTML = '<div class="alert alert-error">' + err.message + '</div>';
+  }
+}
+
+function completeDone() {
+  setTimeout(() => { document.getElementById('progress-bar').style.width = '100%'; }, 50);
+  setTimeout(() => { window.location.href = '/dashboard'; }, 2200);
+}
+
+// Redirect if already logged in
+(async () => {
+  try {
+    const res = await fetch('/api/auth/me');
+    if (res.ok) {
+      const u = await res.json();
+      if (!u.temp_password && u.hipaa_signed) window.location.href = '/dashboard';
+    }
+  } catch {}
+  const p = new URLSearchParams(window.location.search);
+  if (p.get('timeout')) {
+    document.getElementById('alert-area').innerHTML = '<div class="alert alert-error">Session expired. Please log in again.</div>';
+  }
+})();
+</script>
+</body>
+</html>

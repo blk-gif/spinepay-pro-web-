@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>PI Cases — SpinePay Pro</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div id="app">
+  <div id="sidebar"><div class="logo"><h1>SpinePay Pro</h1><p>Walden Bailey Chiropractic</p></div><nav id="nav-links"></nav><div class="sidebar-footer" id="sidebar-footer"></div></div>
+  <div id="main">
+    <div id="topbar"><h2>PI Cases</h2><span class="clock" id="clock"></span><span class="user-badge"></span><button class="btn-logout" id="logout-btn">Logout</button></div>
+    <div id="content">
+      <div id="alert-area"></div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">Personal Injury Cases</span><button class="btn btn-primary" onclick="openPiModal()">+ New Case</button></div>
+        <div class="table-wrap">
+          <table><thead><tr><th>Patient</th><th>Accident Date</th><th>Type</th><th>Attorney</th><th>Lien</th><th>Settlement</th><th>Status</th><th>Actions</th></tr></thead>
+          <tbody id="pi-tbody"></tbody></table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="modal-overlay hidden" id="pi-modal">
+  <div class="modal" style="max-width:640px">
+    <div class="modal-header"><span class="modal-title" id="pi-modal-title">New PI Case</span><button class="modal-close" onclick="closeModal('pi-modal')">×</button></div>
+    <div id="pi-alert"></div>
+    <div class="form-row">
+      <div class="form-group"><label>Patient Name</label><input id="pi-patient" type="text"></div>
+      <div class="form-group"><label>Date of Accident</label><input id="pi-doa" type="date"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Accident Type</label><input id="pi-type" type="text" placeholder="e.g. MVA, Slip & Fall"></div>
+      <div class="form-group"><label>Insurance Company</label><input id="pi-ins" type="text"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Claim Number</label><input id="pi-claim" type="text"></div>
+      <div class="form-group"><label>Policy Limit</label><input id="pi-limit" type="number" step="0.01" value="0"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Attorney Name</label><input id="pi-atty" type="text"></div>
+      <div class="form-group"><label>Attorney Firm</label><input id="pi-firm" type="text"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Attorney Phone</label><input id="pi-atty-phone" type="tel"></div>
+      <div class="form-group"><label>Lien Amount</label><input id="pi-lien" type="number" step="0.01" value="0"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Settlement Amount</label><input id="pi-settlement" type="number" step="0.01" value="0"></div>
+      <div class="form-group"><label>Case Status</label><select id="pi-status"><option value="open">Open</option><option value="closed">Closed</option><option value="settled">Settled</option><option value="litigation">Litigation</option></select></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('pi-modal')">Cancel</button>
+      <button class="btn btn-primary" onclick="savePi()">Save Case</button>
+    </div>
+  </div>
+</div>
+<script src="/js/app.js"></script>
+<script>
+let cases = [], editPiId = null;
+async function loadCases(){
+  cases=await GET('/api/pi-cases').catch(()=>[]);
+  const tb=document.getElementById('pi-tbody');
+  if(!cases.length){tb.innerHTML='<tr><td colspan="8"><div class="empty-state"><div class="icon">⚖️</div><p>No PI cases</p></div></td></tr>';return;}
+  tb.innerHTML=cases.map(c=>`<tr>
+    <td>${escHtml(c.patient_name||(c.first_name?(c.first_name+' '+c.last_name):'—'))}</td>
+    <td>${fmtDate(c.date_of_accident)}</td>
+    <td>${escHtml(c.accident_type||'—')}</td>
+    <td>${escHtml(c.attorney_name||'—')}</td>
+    <td>${fmtMoney(c.lien_amount)}</td>
+    <td>${fmtMoney(c.settlement_amount)}</td>
+    <td>${statusBadge(c.case_status)}</td>
+    <td><button class="btn btn-sm btn-outline" onclick="editCase(${c.id})">Edit</button></td>
+  </tr>`).join('');
+}
+function openPiModal(){editPiId=null;document.getElementById('pi-modal-title').textContent='New PI Case';['patient','doa','type','ins','claim','atty','firm','atty-phone'].forEach(f=>{const el=document.getElementById('pi-'+f);if(el)el.value='';});['limit','lien','settlement'].forEach(f=>{document.getElementById('pi-'+f).value='0';});document.getElementById('pi-status').value='open';openModal('pi-modal');}
+function editCase(id){const c=cases.find(x=>x.id===id);if(!c)return;editPiId=id;document.getElementById('pi-modal-title').textContent='Edit PI Case';document.getElementById('pi-patient').value=c.patient_name||'';document.getElementById('pi-doa').value=c.date_of_accident?c.date_of_accident.split('T')[0]:'';document.getElementById('pi-type').value=c.accident_type||'';document.getElementById('pi-ins').value=c.insurance_company||'';document.getElementById('pi-claim').value=c.claim_number||'';document.getElementById('pi-limit').value=c.policy_limit||0;document.getElementById('pi-atty').value=c.attorney_name||'';document.getElementById('pi-firm').value=c.attorney_firm||'';document.getElementById('pi-atty-phone').value=c.attorney_phone||'';document.getElementById('pi-lien').value=c.lien_amount||0;document.getElementById('pi-settlement').value=c.settlement_amount||0;document.getElementById('pi-status').value=c.case_status||'open';openModal('pi-modal');}
+async function savePi(){
+  const data={patient_name:document.getElementById('pi-patient').value.trim(),date_of_accident:document.getElementById('pi-doa').value||null,accident_type:document.getElementById('pi-type').value.trim()||null,insurance_company:document.getElementById('pi-ins').value.trim()||null,claim_number:document.getElementById('pi-claim').value.trim()||null,policy_limit:parseFloat(document.getElementById('pi-limit').value)||0,attorney_name:document.getElementById('pi-atty').value.trim()||null,attorney_firm:document.getElementById('pi-firm').value.trim()||null,attorney_phone:document.getElementById('pi-atty-phone').value.trim()||null,lien_amount:parseFloat(document.getElementById('pi-lien').value)||0,settlement_amount:parseFloat(document.getElementById('pi-settlement').value)||0,case_status:document.getElementById('pi-status').value};
+  try{if(editPiId)await PUT('/api/pi-cases/'+editPiId,data);else await POST('/api/pi-cases',data);closeModal('pi-modal');loadCases();}catch(e){document.getElementById('pi-alert').innerHTML='<div class="alert alert-error">'+e.message+'</div>';}
+}
+(async()=>{await requireLogin();loadCases();})();
+</script>
+</body>
+</html>

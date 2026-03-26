@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>EOB Records — SpinePay Pro</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div id="app">
+  <div id="sidebar"><div class="logo"><h1>SpinePay Pro</h1><p>Walden Bailey Chiropractic</p></div><nav id="nav-links"></nav><div class="sidebar-footer" id="sidebar-footer"></div></div>
+  <div id="main">
+    <div id="topbar"><h2>EOB Records</h2><span class="clock" id="clock"></span><span class="user-badge"></span><button class="btn-logout" id="logout-btn">Logout</button></div>
+    <div id="content">
+      <div id="alert-area"></div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">Explanation of Benefits</span><button class="btn btn-primary" onclick="openEobModal()">+ New EOB</button></div>
+        <div class="table-wrap">
+          <table><thead><tr><th>Patient</th><th>Payer</th><th>Claim #</th><th>Service Date</th><th>Billed</th><th>Paid</th><th>Patient Resp</th><th>Status</th><th>Actions</th></tr></thead>
+          <tbody id="eob-tbody"></tbody></table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="modal-overlay hidden" id="eob-modal">
+  <div class="modal" style="max-width:640px">
+    <div class="modal-header"><span class="modal-title">New EOB Record</span><button class="modal-close" onclick="closeModal('eob-modal')">×</button></div>
+    <div id="eob-alert"></div>
+    <div class="form-row">
+      <div class="form-group"><label>Patient Name</label><input id="e-patient" type="text"></div>
+      <div class="form-group"><label>Payer Name</label><input id="e-payer" type="text"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Claim Number</label><input id="e-claim" type="text"></div>
+      <div class="form-group"><label>Service Date</label><input id="e-svc" type="date"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Received Date</label><input id="e-received" type="date"></div>
+      <div class="form-group"><label>Billed Amount</label><input id="e-billed" type="number" step="0.01" value="0"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Allowed Amount</label><input id="e-allowed" type="number" step="0.01" value="0"></div>
+      <div class="form-group"><label>Paid Amount</label><input id="e-paid" type="number" step="0.01" value="0"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Patient Responsibility</label><input id="e-resp" type="number" step="0.01" value="0"></div>
+      <div class="form-group"><label>Denial Reason</label><input id="e-denial" type="text"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('eob-modal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveEob()">Save EOB</button>
+    </div>
+  </div>
+</div>
+<script src="/js/app.js"></script>
+<script>
+async function loadEobs(){
+  const list=await GET('/api/billing/eob').catch(()=>[]);
+  const tb=document.getElementById('eob-tbody');
+  if(!list.length){tb.innerHTML='<tr><td colspan="9"><div class="empty-state"><div class="icon">📄</div><p>No EOB records</p></div></td></tr>';return;}
+  tb.innerHTML=list.map(e=>`<tr>
+    <td>${escHtml(e.patient_name||(e.first_name?(e.first_name+' '+e.last_name):'—'))}</td>
+    <td>${escHtml(e.payer_name||'—')}</td>
+    <td><code style="font-size:11px">${escHtml(e.claim_number||'—')}</code></td>
+    <td>${fmtDate(e.service_date)}</td>
+    <td>${fmtMoney(e.billed_amount)}</td>
+    <td>${fmtMoney(e.paid_amount)}</td>
+    <td>${fmtMoney(e.patient_resp)}</td>
+    <td>${statusBadge(e.status)}</td>
+    <td>${e.discrepancy_flag?'<span class="badge badge-red">⚠ Discrepancy</span>':''}</td>
+  </tr>`).join('');
+}
+function openEobModal(){['patient','payer','claim','denial'].forEach(f=>{document.getElementById('e-'+f).value='';});['billed','allowed','paid','resp'].forEach(f=>{document.getElementById('e-'+f).value='0';});document.getElementById('e-svc').value='';document.getElementById('e-received').value=new Date().toISOString().split('T')[0];openModal('eob-modal');}
+async function saveEob(){
+  const data={patient_name:document.getElementById('e-patient').value.trim(),payer_name:document.getElementById('e-payer').value.trim()||null,claim_number:document.getElementById('e-claim').value.trim()||null,service_date:document.getElementById('e-svc').value||null,received_date:document.getElementById('e-received').value||null,billed_amount:parseFloat(document.getElementById('e-billed').value)||0,allowed_amount:parseFloat(document.getElementById('e-allowed').value)||0,paid_amount:parseFloat(document.getElementById('e-paid').value)||0,patient_resp:parseFloat(document.getElementById('e-resp').value)||0,denial_reason:document.getElementById('e-denial').value.trim()||null};
+  try{await POST('/api/billing/eob',data);closeModal('eob-modal');loadEobs();}catch(e){document.getElementById('eob-alert').innerHTML='<div class="alert alert-error">'+e.message+'</div>';}
+}
+(async()=>{await requireLogin();loadEobs();})();
+</script>
+</body>
+</html>

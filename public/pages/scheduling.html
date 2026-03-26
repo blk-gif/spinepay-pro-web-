@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Scheduling — SpinePay Pro</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div id="app">
+  <div id="sidebar"><div class="logo"><h1>SpinePay Pro</h1><p>Walden Bailey Chiropractic</p></div><nav id="nav-links"></nav><div class="sidebar-footer" id="sidebar-footer"></div></div>
+  <div id="main">
+    <div id="topbar">
+      <h2>Scheduling</h2>
+      <span class="clock" id="clock"></span>
+      <span class="user-badge"></span>
+      <button class="btn-logout" id="logout-btn">Logout</button>
+    </div>
+    <div id="content">
+      <div id="alert-area"></div>
+      <div class="card">
+        <div class="card-header">
+          <div style="display:flex;align-items:center;gap:10px">
+            <button class="btn btn-sm btn-outline" onclick="shiftDay(-1)">‹</button>
+            <input type="date" id="date-picker" style="background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px">
+            <button class="btn btn-sm btn-outline" onclick="shiftDay(1)">›</button>
+          </div>
+          <button class="btn btn-primary" onclick="openApptModal()">+ New Appointment</button>
+        </div>
+        <div class="table-wrap">
+          <table><thead><tr><th>Time</th><th>Patient</th><th>Type</th><th>Provider</th><th>Status</th><th>Actions</th></tr></thead>
+          <tbody id="appts-tbody"></tbody></table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay hidden" id="appt-modal">
+  <div class="modal">
+    <div class="modal-header"><span class="modal-title" id="appt-modal-title">New Appointment</span><button class="modal-close" onclick="closeModal('appt-modal')">×</button></div>
+    <div id="appt-alert"></div>
+    <div class="form-row">
+      <div class="form-group"><label>Patient Name</label><input id="a-patient" type="text" placeholder="Search or type name"></div>
+      <div class="form-group"><label>Date</label><input id="a-date" type="date"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Time</label><input id="a-time" type="time"></div>
+      <div class="form-group"><label>Duration (min)</label><input id="a-dur" type="number" value="30"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Type</label>
+        <select id="a-type"><option>adjustment</option><option>consultation</option><option>new patient</option><option>follow-up</option><option>re-exam</option></select>
+      </div>
+      <div class="form-group"><label>Status</label>
+        <select id="a-status"><option>scheduled</option><option>confirmed</option><option>completed</option><option>cancelled</option><option>no-show</option></select>
+      </div>
+    </div>
+    <div class="form-group"><label>Notes</label><textarea id="a-notes"></textarea></div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('appt-modal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveAppt()">Save</button>
+    </div>
+  </div>
+</div>
+
+<script src="/js/app.js"></script>
+<script>
+let appts = [], editApptId = null;
+const dp = () => document.getElementById('date-picker');
+
+function shiftDay(d) {
+  const dt = new Date(dp().value + 'T12:00:00');
+  dt.setDate(dt.getDate() + d);
+  dp().value = dt.toISOString().split('T')[0];
+  loadAppts();
+}
+
+async function loadAppts() {
+  const date = dp().value;
+  appts = await GET('/api/appointments?date=' + date).catch(() => []);
+  const tb = document.getElementById('appts-tbody');
+  if (!appts.length) { tb.innerHTML = '<tr><td colspan="6"><div class="empty-state"><div class="icon">📅</div><p>No appointments for this date</p></div></td></tr>'; return; }
+  tb.innerHTML = appts.map(a => `<tr>
+    <td><strong>${a.time||'—'}</strong></td>
+    <td>${escHtml((a.first_name||a.patient_name||'')+(a.last_name?' '+a.last_name:''))}</td>
+    <td>${escHtml(a.type||'')}</td>
+    <td>${escHtml(a.provider||'')}</td>
+    <td>${statusBadge(a.status)}</td>
+    <td><div class="actions">
+      <button class="btn btn-sm btn-outline" onclick="editAppt(${a.id})">Edit</button>
+      <select class="btn btn-sm btn-outline" onchange="changeStatus(${a.id},this.value)" style="cursor:pointer">
+        <option value="">Status…</option>
+        <option value="completed">Completed</option>
+        <option value="cancelled">Cancelled</option>
+        <option value="no-show">No-Show</option>
+      </select>
+    </div></td>
+  </tr>`).join('');
+}
+
+async function changeStatus(id, status) {
+  if (!status) return;
+  await PATCH('/api/appointments/' + id + '/status', { status }).catch(e => showAlert(e.message));
+  loadAppts();
+}
+
+function openApptModal() {
+  editApptId = null;
+  document.getElementById('appt-modal-title').textContent = 'New Appointment';
+  document.getElementById('a-date').value = dp().value;
+  ['patient','time','notes'].forEach(f => { const el = document.getElementById('a-'+f); if(el) el.value=''; });
+  document.getElementById('a-dur').value = '30';
+  document.getElementById('a-type').value = 'adjustment';
+  document.getElementById('a-status').value = 'scheduled';
+  openModal('appt-modal');
+}
+
+function editAppt(id) {
+  const a = appts.find(x => x.id === id);
+  if (!a) return;
+  editApptId = id;
+  document.getElementById('appt-modal-title').textContent = 'Edit Appointment';
+  document.getElementById('a-patient').value = (a.first_name||a.patient_name||'') + (a.last_name?' '+a.last_name:'');
+  document.getElementById('a-date').value = a.date ? a.date.split('T')[0] : '';
+  document.getElementById('a-time').value = a.time||'';
+  document.getElementById('a-dur').value = a.duration||30;
+  document.getElementById('a-type').value = a.type||'adjustment';
+  document.getElementById('a-status').value = a.status||'scheduled';
+  document.getElementById('a-notes').value = a.notes||'';
+  openModal('appt-modal');
+}
+
+async function saveAppt() {
+  const data = {
+    patient_name: document.getElementById('a-patient').value.trim(),
+    date: document.getElementById('a-date').value,
+    time: document.getElementById('a-time').value,
+    duration: parseInt(document.getElementById('a-dur').value)||30,
+    type: document.getElementById('a-type').value,
+    status: document.getElementById('a-status').value,
+    notes: document.getElementById('a-notes').value.trim()||null,
+  };
+  if (!data.date || !data.time) { document.getElementById('appt-alert').innerHTML = '<div class="alert alert-error">Date and time required</div>'; return; }
+  try {
+    if (editApptId) await PUT('/api/appointments/' + editApptId, data);
+    else await POST('/api/appointments', data);
+    closeModal('appt-modal'); loadAppts();
+  } catch (err) { document.getElementById('appt-alert').innerHTML = '<div class="alert alert-error">'+err.message+'</div>'; }
+}
+
+(async () => {
+  await requireLogin();
+  dp().value = new Date().toISOString().split('T')[0];
+  loadAppts();
+  dp().addEventListener('change', loadAppts);
+})();
+</script>
+</body>
+</html>

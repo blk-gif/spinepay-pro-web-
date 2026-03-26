@@ -1,0 +1,78 @@
+'use strict';
+
+const { Router } = require('express');
+const { pool } = require('../db/pool');
+const { auditLog } = require('../middleware/audit');
+
+const router = Router();
+
+// GET /api/patients
+router.get('/', async (req, res) => {
+  try {
+    const { search } = req.query;
+    let q, params;
+    if (search) {
+      const s = `%${search}%`;
+      q = `SELECT * FROM patients WHERE first_name ILIKE $1 OR last_name ILIKE $1 OR phone ILIKE $1 OR email ILIKE $1 ORDER BY last_name, first_name LIMIT 50`;
+      params = [s];
+    } else {
+      q = `SELECT * FROM patients WHERE status = 'active' ORDER BY last_name, first_name`;
+      params = [];
+    }
+    const { rows } = await pool.query(q, params);
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// GET /api/patients/:id
+router.get('/:id', async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT * FROM patients WHERE id = $1', [req.params.id]);
+    if (!rows[0]) return res.status(404).json({ error: 'Patient not found' });
+    await auditLog(req, 'READ', 'patient', req.params.id);
+    res.json(rows[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST /api/patients
+router.post('/', async (req, res) => {
+  try {
+    const { first_name, last_name, dob, gender, phone, email, address, city, state, zip, emergency_contact, emergency_phone, insurance_name, insurance_id, group_number, notes } = req.body;
+    if (!first_name || !last_name) return res.status(400).json({ error: 'First and last name required' });
+    const { rows } = await pool.query(
+      `INSERT INTO patients (first_name, last_name, dob, gender, phone, email, address, city, state, zip, emergency_contact, emergency_phone, insurance_name, insurance_id, group_number, notes)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
+      [first_name, last_name, dob||null, gender||null, phone||null, email||null, address||null, city||null, state||null, zip||null, emergency_contact||null, emergency_phone||null, insurance_name||null, insurance_id||null, group_number||null, notes||null]
+    );
+    await auditLog(req, 'CREATE', 'patient', rows[0].id);
+    res.status(201).json(rows[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// PUT /api/patients/:id
+router.put('/:id', async (req, res) => {
+  try {
+    const { first_name, last_name, dob, gender, phone, email, address, city, state, zip, emergency_contact, emergency_phone, insurance_name, insurance_id, group_number, notes, status } = req.body;
+    const { rows } = await pool.query(
+      `UPDATE patients SET first_name=$1, last_name=$2, dob=$3, gender=$4, phone=$5, email=$6, address=$7, city=$8, state=$9, zip=$10,
+       emergency_contact=$11, emergency_phone=$12, insurance_name=$13, insurance_id=$14, group_number=$15, notes=$16, status=$17, updated_at=NOW()
+       WHERE id=$18 RETURNING *`,
+      [first_name, last_name, dob||null, gender||null, phone||null, email||null, address||null, city||null, state||null, zip||null, emergency_contact||null, emergency_phone||null, insurance_name||null, insurance_id||null, group_number||null, notes||null, status||'active', req.params.id]
+    );
+    if (!rows[0]) return res.status(404).json({ error: 'Patient not found' });
+    await auditLog(req, 'UPDATE', 'patient', req.params.id);
+    res.json(rows[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// DELETE /api/patients/:id (admin only handled at server level via requireAdmin)
+router.delete('/:id', async (req, res) => {
+  try {
+    if (req.session.staff.role !== 'Admin') return res.status(403).json({ error: 'Admin required' });
+    await pool.query('UPDATE patients SET status = $1 WHERE id = $2', ['inactive', req.params.id]);
+    await auditLog(req, 'DELETE', 'patient', req.params.id);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+module.exports = router;

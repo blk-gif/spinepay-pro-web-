@@ -4,6 +4,16 @@ const { pool } = require('../db/pool');
 const { auditLog } = require('../middleware/audit');
 const router = Router();
 
+router.get('/by-patient/:patientId', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT f.*, p.first_name, p.last_name FROM intake_forms f LEFT JOIN patients p ON f.patient_id = p.id WHERE f.patient_id = $1 ORDER BY f.submitted_at DESC`,
+      [req.params.patientId]
+    );
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 router.get('/', async (req, res) => {
   try {
     const { patient_id } = req.query;

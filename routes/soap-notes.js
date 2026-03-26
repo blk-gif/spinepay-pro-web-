@@ -6,6 +6,26 @@ const { auditLog } = require('../middleware/audit');
 
 const router = Router();
 
+router.get('/by-patient/:patientId', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT s.*, a.date as appt_date, a.time as appt_time FROM soap_notes s LEFT JOIN appointments a ON s.appointment_id = a.id WHERE s.patient_id = $1 ORDER BY COALESCE(s.note_date, s.created_at::date) DESC`,
+      [req.params.patientId]
+    );
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.get('/by-appointment/:appointmentId', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT s.*, p.first_name, p.last_name FROM soap_notes s LEFT JOIN patients p ON s.patient_id = p.id WHERE s.appointment_id = $1`,
+      [req.params.appointmentId]
+    );
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 router.get('/', async (req, res) => {
   try {
     const { patient_id, appointment_id } = req.query;
@@ -42,7 +62,7 @@ router.post('/', async (req, res) => {
     const { rows } = await pool.query(
       `INSERT INTO soap_notes (patient_id, patient_name, appointment_id, note_date, provider, subjective, objective, assessment, plan, icd_codes, cpt_codes, created_by)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
-      [patient_id||null, patient_name||null, appointment_id||null, note_date||null, provider||null, subjective||null, objective||null, assessment||null, plan||null, icd_codes||null, cpt_codes||null, req.session.staff.name]
+      [patient_id||null, patient_name||null, appointment_id||null, note_date||null, provider||null, subjective||null, objective||null, assessment||null, plan||null, icd_codes||null, cpt_codes||null, req.session.staff.full_name]
     );
     await auditLog(req, 'CREATE', 'soap_note', rows[0].id);
     res.status(201).json(rows[0]);
@@ -69,7 +89,7 @@ router.put('/:id', async (req, res) => {
 
 router.delete('/:id', async (req, res) => {
   try {
-    if (req.session.staff.role !== 'Admin') return res.status(403).json({ error: 'Admin required' });
+    if (req.session.staff.role !== 'admin') return res.status(403).json({ error: 'Admin required' });
     await pool.query('DELETE FROM soap_notes WHERE id = $1', [req.params.id]);
     await auditLog(req, 'DELETE', 'soap_note', req.params.id);
     res.json({ success: true });

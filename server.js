@@ -62,20 +62,40 @@ app.get('/api/health', async (req, res) => {
 });
 
 const { requireAuth, requireAdmin } = require('./middleware/auth');
+
+// ── Core routes ─────────────────────────────────────────────────────────────
 app.use('/api/auth',          require('./routes/auth'));
 app.use('/api/patients',      requireAuth,  require('./routes/patients'));
 app.use('/api/appointments',  requireAuth,  require('./routes/appointments'));
-app.use('/api/soap-notes',    requireAuth,  require('./routes/soap-notes'));
-app.use('/api/billing',       requireAuth,  require('./routes/billing'));
 app.use('/api/staff',         requireAdmin, require('./routes/staff'));
 app.use('/api/settings',      requireAdmin, require('./routes/settings'));
-app.use('/api/referrals',     requireAuth,  require('./routes/referrals'));
-app.use('/api/pi-cases',      requireAuth,  require('./routes/pi-cases'));
-app.use('/api/intake',        requireAuth,  require('./routes/intake'));
 app.use('/api/waitlist',      requireAuth,  require('./routes/waitlist'));
-app.use('/api/timeclock',     requireAuth,  require('./routes/timeclock'));
 app.use('/api/reminders',     requireAuth,  require('./routes/reminders'));
+
+// ── Clinical routes (with frontend-expected path aliases) ───────────────────
+app.use('/api/soap-notes',    requireAuth,  require('./routes/soap-notes'));
+app.use('/api/soap',          requireAuth,  require('./routes/soap-notes'));  // alias
+
+app.use('/api/intake',        requireAuth,  require('./routes/intake'));
+
+// ── Billing routes (frontend calls /api/claims, /api/payments, /api/eob) ───
+app.use('/api/claims',        requireAuth,  require('./routes/claims'));
+app.use('/api/payments',      requireAuth,  require('./routes/payments'));
+app.use('/api/eob',           requireAuth,  require('./routes/eob'));
+app.use('/api/billing',       requireAuth,  require('./routes/billing'));  // keep for compat
+
+// ── Operations (frontend calls /api/transport, /api/pi) ─────────────────────
 app.use('/api/transportation',requireAuth,  require('./routes/transportation'));
+app.use('/api/transport',     requireAuth,  require('./routes/transportation'));  // alias
+
+app.use('/api/pi-cases',      requireAuth,  require('./routes/pi-cases'));
+app.use('/api/pi',            requireAuth,  require('./routes/pi-cases'));  // alias
+
+app.use('/api/referrals',     requireAuth,  require('./routes/referrals'));
+app.use('/api/timeclock',     requireAuth,  require('./routes/timeclock'));
+
+// ── Reports ──────────────────────────────────────────────────────────────────
+app.use('/api/reports',       requireAuth,  require('./routes/reports'));
 
 app.use((req, res, next) => {
   if (req.method !== 'GET') return next();

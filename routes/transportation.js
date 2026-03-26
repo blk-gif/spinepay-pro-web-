@@ -3,6 +3,16 @@ const { Router } = require('express');
 const { pool } = require('../db/pool');
 const router = Router();
 
+router.get('/by-patient/:patientId', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT t.*, p.first_name, p.last_name, p.phone FROM transportation t LEFT JOIN patients p ON t.patient_id = p.id WHERE t.patient_id = $1 ORDER BY t.created_at DESC`,
+      [req.params.patientId]
+    );
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 router.get('/', async (req, res) => {
   try {
     const { patient_id } = req.query;

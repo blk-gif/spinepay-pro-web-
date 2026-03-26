@@ -64,7 +64,7 @@ router.patch('/claims/:id/status', async (req, res) => {
 
 router.delete('/claims/:id', async (req, res) => {
   try {
-    if (req.session.staff.role !== 'Admin') return res.status(403).json({ error: 'Admin required' });
+    if (req.session.staff.role !== 'admin') return res.status(403).json({ error: 'Admin required' });
     await pool.query('DELETE FROM billing_claims WHERE id = $1', [req.params.id]);
     await auditLog(req, 'DELETE', 'billing_claim', req.params.id);
     res.json({ success: true });

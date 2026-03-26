@@ -9,7 +9,7 @@ async function auditLog(req, action, resource, resourceId = null) {
        VALUES ($1, $2, $3, $4, $5, $6, $7)`,
       [
         req.session?.staff?.id ?? null,
-        req.session?.staff?.name ?? 'system',
+        req.session?.staff?.full_name ?? 'system',
         action,
         resource,
         resourceId ? String(resourceId) : null,

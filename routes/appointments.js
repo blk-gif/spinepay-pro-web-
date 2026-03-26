@@ -6,6 +6,30 @@ const { auditLog } = require('../middleware/audit');
 
 const router = Router();
 
+router.get('/by-patient/:patientId', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT a.*, p.first_name, p.last_name, p.phone FROM appointments a LEFT JOIN patients p ON a.patient_id = p.id WHERE a.patient_id = $1 ORDER BY a.date DESC, a.time DESC`,
+      [req.params.patientId]
+    );
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// GET /api/appointments/by-date?startDate=&endDate=
+router.get('/by-date', async (req, res) => {
+  try {
+    const { startDate, endDate, date } = req.query;
+    const s = startDate || date || new Date().toISOString().split('T')[0];
+    const e = endDate || date || new Date().toISOString().split('T')[0];
+    const { rows } = await pool.query(
+      `SELECT a.*, p.first_name, p.last_name, p.phone FROM appointments a LEFT JOIN patients p ON a.patient_id = p.id WHERE a.date BETWEEN $1 AND $2 ORDER BY a.date ASC, a.time ASC`,
+      [s, e]
+    );
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // GET /api/appointments?date=YYYY-MM-DD or ?start=&end=
 router.get('/', async (req, res) => {
   try {

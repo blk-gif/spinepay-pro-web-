@@ -4,6 +4,16 @@ const { pool } = require('../db/pool');
 const { auditLog } = require('../middleware/audit');
 const router = Router();
 
+router.get('/by-patient/:patientId', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT pi.*, p.first_name, p.last_name FROM pi_cases pi LEFT JOIN patients p ON pi.patient_id = p.id WHERE pi.patient_id = $1 ORDER BY pi.created_at DESC`,
+      [req.params.patientId]
+    );
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 router.get('/', async (req, res) => {
   try {
     const { patient_id } = req.query;
@@ -43,7 +53,7 @@ router.put('/:id', async (req, res) => {
 
 router.delete('/:id', async (req, res) => {
   try {
-    if (req.session.staff.role !== 'Admin') return res.status(403).json({ error: 'Admin required' });
+    if (req.session.staff.role !== 'admin') return res.status(403).json({ error: 'Admin required' });
     await pool.query('DELETE FROM pi_cases WHERE id = $1', [req.params.id]);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }

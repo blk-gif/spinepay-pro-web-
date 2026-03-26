@@ -273,7 +273,7 @@ window.App = (() => {
   async function loadDashboard() {
     try {
       const today = todayString();
-      const isAdmin = currentUser && currentUser.role === 'admin';
+      const isAdmin = currentUser && currentUser.role?.toLowerCase() === 'admin';
 
       // Load stats in parallel
       const [patients, appointments, claims] = await Promise.all([
@@ -395,7 +395,18 @@ window.App = (() => {
       window.location.href = 'index.html';
       return false;
     }
-    currentUser = JSON.parse(userData);
+    try {
+      currentUser = JSON.parse(userData);
+    } catch (e) {
+      sessionStorage.clear();
+      window.location.href = 'index.html';
+      return false;
+    }
+    if (!currentUser || !currentUser.full_name) {
+      sessionStorage.clear();
+      window.location.href = 'index.html';
+      return false;
+    }
     return true;
   }
 
@@ -413,7 +424,7 @@ window.App = (() => {
     $('topbarAvatar').textContent = initials;
     $('topbarUserName').textContent = currentUser.full_name;
     $('topbarUserRole').textContent = roleLabel;
-    if (currentUser.role === 'admin') {
+    if (currentUser.role?.toLowerCase() === 'admin') {
       $('topbarUserRole').style.color = 'var(--gold)';
     } else {
       $('topbarUserRole').style.color = '#3498db';
@@ -437,7 +448,7 @@ window.App = (() => {
     initUserUI();
 
     // Hide admin-only nav items from staff
-    if (currentUser.role !== 'admin') {
+    if (currentUser.role?.toLowerCase() !== 'admin') {
       document.querySelectorAll('.nav-item.admin-only').forEach(el => el.style.display = 'none');
     }
 

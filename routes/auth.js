@@ -42,9 +42,9 @@ router.post('/login', loginLimiter, async (req, res) => {
 
     req.session.staff = {
       id: staff.id,
-      name: `${staff.first_name} ${staff.last_name}`,
+      full_name: `${staff.first_name} ${staff.last_name}`,
       username: staff.username,
-      role: staff.role,
+      role: staff.role.toLowerCase(),
       email: staff.email,
       temp_password: staff.temp_password,
       hipaa_signed: staff.hipaa_signed,
@@ -53,7 +53,7 @@ router.post('/login', loginLimiter, async (req, res) => {
 
     res.json({
       success: true,
-      staff: req.session.staff,
+      user: req.session.staff,
       requiresOnboarding: staff.temp_password || !staff.hipaa_signed,
     });
   } catch (err) {
@@ -70,7 +70,7 @@ router.post('/logout', (req, res) => {
 // GET /api/auth/me
 router.get('/me', (req, res) => {
   if (!req.session?.staff) return res.status(401).json({ error: 'Not authenticated' });
-  res.json(req.session.staff);
+  res.json({ success: true, user: req.session.staff });
 });
 
 // POST /api/auth/change-password

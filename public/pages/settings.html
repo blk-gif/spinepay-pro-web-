@@ -35,33 +35,55 @@
     </div>
   </div>
 </div>
-<script src="/js/app.js"></script>
 <script>
-async function loadSettings(){
-  const s=await GET('/api/settings').catch(()=>({}));
-  document.getElementById('s-name').value    = s.PRACTICE_NAME||'';
-  document.getElementById('s-addr').value    = s.PRACTICE_ADDRESS||'';
-  document.getElementById('s-city').value    = s.PRACTICE_CITY||'';
-  document.getElementById('s-state').value   = s.PRACTICE_STATE||'';
-  document.getElementById('s-zip').value     = s.PRACTICE_ZIP||'';
-  document.getElementById('s-phone').value   = s.PRACTICE_PHONE||'';
-  document.getElementById('s-email').value   = s.PRACTICE_EMAIL||'';
-  document.getElementById('s-billing').value = s.BILLING_PROVIDER_NAME||'';
+async function apiGet(url) {
+  const r = await fetch(url, { credentials: 'include' });
+  if (r.status === 401) { window.location.href = '/index.html'; throw new Error('Unauthorized'); }
+  return r.json();
 }
-async function saveSettings(){
-  const data={
-    PRACTICE_NAME:    document.getElementById('s-name').value.trim(),
-    PRACTICE_ADDRESS: document.getElementById('s-addr').value.trim(),
-    PRACTICE_CITY:    document.getElementById('s-city').value.trim(),
-    PRACTICE_STATE:   document.getElementById('s-state').value.trim(),
-    PRACTICE_ZIP:     document.getElementById('s-zip').value.trim(),
-    PRACTICE_PHONE:   document.getElementById('s-phone').value.trim(),
-    PRACTICE_EMAIL:   document.getElementById('s-email').value.trim(),
+async function apiPut(url, data) {
+  const r = await fetch(url, { method: 'PUT', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+  if (r.status === 401) { window.location.href = '/index.html'; throw new Error('Unauthorized'); }
+  return r.json();
+}
+function showMsg(msg, type) {
+  const el = document.getElementById('alert-area');
+  el.innerHTML = `<div style="padding:10px 14px;border-radius:6px;margin-bottom:12px;background:${type==='success'?'rgba(46,204,113,.15)':'rgba(231,76,60,.15)'};border:1px solid ${type==='success'?'rgba(46,204,113,.4)':'rgba(231,76,60,.4)'};color:${type==='success'?'#2ecc71':'#e74c3c'}">${msg}</div>`;
+}
+async function loadSettings() {
+  const s = await apiGet('/api/settings').catch(() => ({}));
+  document.getElementById('s-name').value    = s.PRACTICE_NAME    || 'Walden Bailey Chiropractic';
+  document.getElementById('s-addr').value    = s.PRACTICE_ADDRESS || '1086 Walden Ave Suite 1';
+  document.getElementById('s-city').value    = s.PRACTICE_CITY    || 'Buffalo';
+  document.getElementById('s-state').value   = s.PRACTICE_STATE   || 'NY';
+  document.getElementById('s-zip').value     = s.PRACTICE_ZIP     || '14211';
+  document.getElementById('s-phone').value   = s.PRACTICE_PHONE   || '(716) 893-9200';
+  document.getElementById('s-email').value   = s.PRACTICE_EMAIL   || 'drward@waldenbaileychiropratic.com';
+  document.getElementById('s-billing').value = s.BILLING_PROVIDER_NAME || 'Walden Bailey Chiropractic';
+}
+async function saveSettings() {
+  const data = {
+    PRACTICE_NAME:         document.getElementById('s-name').value.trim(),
+    PRACTICE_ADDRESS:      document.getElementById('s-addr').value.trim(),
+    PRACTICE_CITY:         document.getElementById('s-city').value.trim(),
+    PRACTICE_STATE:        document.getElementById('s-state').value.trim(),
+    PRACTICE_ZIP:          document.getElementById('s-zip').value.trim(),
+    PRACTICE_PHONE:        document.getElementById('s-phone').value.trim(),
+    PRACTICE_EMAIL:        document.getElementById('s-email').value.trim(),
     BILLING_PROVIDER_NAME: document.getElementById('s-billing').value.trim(),
   };
-  try{ await PUT('/api/settings', data); showAlert('Settings saved', 'success'); } catch(e){ showAlert(e.message); }
+  try {
+    await apiPut('/api/settings', data);
+    showMsg('Settings saved successfully', 'success');
+  } catch (e) {
+    showMsg(e.message || 'Save failed', 'error');
+  }
 }
-(async()=>{ await requireLogin(); loadSettings(); })();
+(async () => {
+  const me = await apiGet('/api/auth/me').catch(() => null);
+  if (!me || !me.user) { window.location.href = '/index.html'; return; }
+  loadSettings();
+})();
 </script>
 </body>
 </html>

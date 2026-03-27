@@ -4,6 +4,7 @@ const { Router } = require('express');
 const bcrypt = require('bcryptjs');
 const rateLimit = require('express-rate-limit');
 const { pool } = require('../db/pool');
+const { requireAuth } = require('../middleware/auth');
 
 const router = Router();
 
@@ -78,40 +79,80 @@ router.get('/me', (req, res) => {
 });
 
 // POST /api/auth/change-password
-router.post('/change-password', async (req, res) => {
-  if (!req.session?.staff) return res.status(401).json({ error: 'Not authenticated' });
+router.post('/change-password', requireAuth, async (req, res) => {
   try {
     const { newPassword } = req.body;
-    if (!newPassword || newPassword.length < 8) {
-      return res.status(400).json({ error: 'Password must be at least 8 characters' });
+
+    if (!newPassword || newPassword.length < 8 || !/\d/.test(newPassword)) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters and include a number' });
     }
-    if (!/\d/.test(newPassword)) {
-      return res.status(400).json({ error: 'Password must contain at least one number' });
-    }
+
     const hash = await bcrypt.hash(newPassword, 10);
-    await pool.query('UPDATE staff SET password = $1, temp_password = FALSE WHERE id = $2', [hash, req.session.staff.id]);
-    req.session.staff.temp_password = false;
-    const redirect = req.session.staff.hipaa_signed ? '/app.html' : '/hipaa.html';
-    res.json({ success: true, redirect });
+    const result = await pool.query(
+      `UPDATE staff SET password = $1, temp_password = FALSE
+       WHERE id = $2 RETURNING id, username, temp_password`,
+      [hash, req.session.staff.id]
+    );
+
+    console.log('[Auth] Password changed for:', result.rows[0]);
+
+    // Reassign entire staff object so express-session detects the change
+    req.session.staff = { ...req.session.staff, temp_password: false };
+
+    await new Promise((resolve, reject) => {
+      req.session.save(err => err ? reject(err) : resolve());
+    });
+
+    res.json({ success: true, redirect: '/hipaa.html' });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[Auth] Change password error:', err.message);
+    res.status(500).json({ error: 'Failed to change password' });
   }
 });
 
 // POST /api/auth/hipaa-sign
-router.post('/hipaa-sign', async (req, res) => {
-  if (!req.session?.staff) return res.status(401).json({ error: 'Not authenticated' });
+router.post('/hipaa-sign', requireAuth, async (req, res) => {
   try {
     const { signature } = req.body;
-    if (!signature) return res.status(400).json({ error: 'Signature required' });
-    const now = new Date();
-    await pool.query('UPDATE staff SET hipaa_signed = TRUE, hipaa_signed_at = $1 WHERE id = $2', [now, req.session.staff.id]);
+
+    if (!signature || signature.trim().length < 2) {
+      return res.status(400).json({ error: 'Please enter your full name' });
+    }
+
     await pool.query(
-      "INSERT INTO staff_hipaa (staff_id, signature, agreed_at, policy_version) VALUES ($1, $2, $3, '1.0')",
-      [req.session.staff.id, signature, now]
+      `INSERT INTO staff_hipaa (staff_id, signature, agreed_at, policy_version)
+       VALUES ($1, $2, NOW(), '1.0')
+       ON CONFLICT DO NOTHING`,
+      [req.session.staff.id, signature.trim()]
     );
-    req.session.staff.hipaa_signed = true;
+
+    await pool.query(
+      'UPDATE staff SET hipaa_signed = TRUE, hipaa_signed_at = NOW() WHERE id = $1',
+      [req.session.staff.id]
+    );
+
+    // Reassign entire staff object so express-session detects the change
+    req.session.staff = { ...req.session.staff, hipaa_signed: true };
+
+    await new Promise((resolve, reject) => {
+      req.session.save(err => err ? reject(err) : resolve());
+    });
+
     res.json({ success: true, redirect: '/role-confirm.html' });
+  } catch (err) {
+    console.error('[Auth] HIPAA sign error:', err.message);
+    res.status(500).json({ error: 'Failed to save HIPAA acknowledgment' });
+  }
+});
+
+// GET /api/auth/debug-staff/:username  — TEMPORARY, remove after verifying fix
+router.get('/debug-staff/:username', async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT id, username, role, temp_password, hipaa_signed, active FROM staff WHERE username = $1',
+      [req.params.username]
+    );
+    res.json(result.rows[0] || { error: 'Not found' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

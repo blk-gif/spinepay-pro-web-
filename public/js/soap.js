@@ -21,7 +21,7 @@ window.SoapNotes = (() => {
             <input type="text" class="form-control" id="soapSearch" placeholder="Search by patient name..." />
           </div>
           <div style="flex:1;"></div>
-          <button class="btn btn-primary btn-sm" id="newSoapBtn" style="display:none;">
+          <button class="btn btn-primary btn-sm" id="newSoapBtn">
             <i class="fa-solid fa-plus"></i> New SOAP Note
           </button>
         </div>
@@ -155,10 +155,8 @@ window.SoapNotes = (() => {
     }
 
     const user = getCurrentUser();
-    if (user && user.role === 'admin') {
-      const btn = document.getElementById('newSoapBtn');
-      if (btn) btn.style.display = 'inline-flex';
-    }
+    const btn = document.getElementById('newSoapBtn');
+    if (btn) btn.style.display = 'inline-flex';
 
     showListView();
     allPatients = await window.api.patients.getAll();

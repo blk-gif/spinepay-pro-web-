@@ -261,6 +261,7 @@ async function runMigrations() {
         notes       TEXT,
         approved    BOOLEAN DEFAULT FALSE,
         approved_by TEXT,
+        approved_at TIMESTAMPTZ,
         created_at  TIMESTAMPTZ DEFAULT NOW()
       );
 
@@ -343,6 +344,9 @@ async function runMigrations() {
         updated_at TIMESTAMPTZ DEFAULT NOW()
       );
     `);
+
+    // ── Column additions for existing databases ───────────────────────────────
+    await client.query(`ALTER TABLE time_clock ADD COLUMN IF NOT EXISTS approved_at TIMESTAMPTZ`).catch(() => {});
 
     // Default reminder templates
     await client.query(`

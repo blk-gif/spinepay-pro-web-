@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Time Approvals — SpinePay Pro</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div id="app">
+  <div id="sidebar"></div>
+  <div id="main">
+    <div id="topbar"></div>
+    <div id="content" class="page-content">
+      <div id="alert-area"></div>
+
+      <!-- Filters -->
+      <div class="card" style="margin-bottom:16px">
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          <div style="display:flex;align-items:center;gap:8px">
+            <label style="white-space:nowrap;font-size:12px;color:var(--text-muted)">From</label>
+            <input type="date" id="filter-start" style="background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px">
+          </div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <label style="white-space:nowrap;font-size:12px;color:var(--text-muted)">To</label>
+            <input type="date" id="filter-end" style="background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px">
+          </div>
+          <select id="filter-staff" style="background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px">
+            <option value="">All Staff</option>
+          </select>
+          <select id="filter-status" style="background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px">
+            <option value="">All Status</option>
+            <option value="pending">Pending Approval</option>
+            <option value="approved">Approved</option>
+          </select>
+          <button class="btn btn-primary" onclick="loadEntries()">Apply</button>
+          <button class="btn btn-outline" onclick="setThisWeek()">This Week</button>
+          <button class="btn btn-outline" onclick="setThisMonth()">This Month</button>
+          <div style="margin-left:auto">
+            <button class="btn btn-outline" onclick="approveAll()">✓ Approve All Pending</button>
+            <button class="btn btn-outline" onclick="exportCSV()" style="margin-left:8px">⬇ Export CSV</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Payroll Summary -->
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-header"><span class="card-title">Payroll Summary</span><button class="btn btn-sm btn-outline" onclick="loadPayroll()">Refresh</button></div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Staff Member</th><th>Shifts</th><th>Total Hours</th><th>Approved</th><th>Pending</th></tr></thead>
+            <tbody id="payroll-tbody"><tr><td colspan="5" style="text-align:center;padding:24px;color:var(--text-muted)">Loading…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Entries -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Time Entries</span>
+          <span id="entry-count" style="color:var(--text-muted);font-size:13px"></span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Staff</th>
+                <th>Clock In</th>
+                <th>Clock Out</th>
+                <th>Hours</th>
+                <th>Status</th>
+                <th>Approved By</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="entries-tbody"><tr><td colspan="7" style="text-align:center;padding:32px;color:var(--text-muted)">Loading…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- Edit Modal -->
+<div class="modal-overlay hidden" id="edit-modal">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-header">
+      <span class="modal-title">Edit Time Entry</span>
+      <button class="modal-close" onclick="closeModal('edit-modal')">×</button>
+    </div>
+    <div id="edit-alert"></div>
+    <div class="form-group"><label>Staff</label><input id="edit-staff-name" type="text" disabled style="opacity:.6"></div>
+    <div class="form-row">
+      <div class="form-group"><label>Clock In *</label><input id="edit-clock-in" type="datetime-local"></div>
+      <div class="form-group"><label>Clock Out</label><input id="edit-clock-out" type="datetime-local"></div>
+    </div>
+    <div class="form-group"><label>Notes</label><textarea id="edit-notes" rows="2"></textarea></div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('edit-modal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveEdit()">Save Changes</button>
+    </div>
+  </div>
+</div>
+
+<script src="/js/layout.js"></script>
+<script>
+let entries = [];
+let editingId = null;
+
+function toLocalDT(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return d.toISOString().slice(0,16);
+}
+
+function fmtDT(iso) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleString('en-US', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
+}
+
+function setThisWeek() {
+  const now = new Date();
+  const day = now.getDay(); // 0=Sun
+  const startOfWeek = new Date(now);
+  startOfWeek.setDate(now.getDate() - day);
+  document.getElementById('filter-start').value = startOfWeek.toISOString().split('T')[0];
+  document.getElementById('filter-end').value = now.toISOString().split('T')[0];
+  loadEntries(); loadPayroll();
+}
+
+function setThisMonth() {
+  const now = new Date();
+  document.getElementById('filter-start').value = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`;
+  document.getElementById('filter-end').value = now.toISOString().split('T')[0];
+  loadEntries(); loadPayroll();
+}
+
+async function loadEntries() {
+  const start  = document.getElementById('filter-start').value;
+  const end    = document.getElementById('filter-end').value;
+  const staffId = document.getElementById('filter-staff').value;
+  const status  = document.getElementById('filter-status').value;
+  let url = `/api/timeclock/admin/entries?startDate=${start}&endDate=${end}`;
+  if (staffId) url += `&staffId=${staffId}`;
+  const data = await GET(url).catch(() => []);
+  entries = Array.isArray(data) ? data : [];
+
+  let filtered = entries;
+  if (status === 'pending') filtered = entries.filter(e => !e.approved);
+  if (status === 'approved') filtered = entries.filter(e => e.approved);
+
+  document.getElementById('entry-count').textContent = `${filtered.length} entries`;
+  const tbody = document.getElementById('entries-tbody');
+  if (!filtered.length) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:32px;color:var(--text-muted)">No entries found</td></tr>';
+    return;
+  }
+  tbody.innerHTML = filtered.map(e => {
+    const name = `${e.first_name || ''} ${e.last_name || ''}`.trim() || e.staff_name || '—';
+    const hours = e.total_hours != null ? parseFloat(e.total_hours).toFixed(2) + 'h' : (e.clock_out ? '—' : '<span style="color:var(--gold)">Active</span>');
+    const badge = e.approved
+      ? '<span class="badge badge-green">Approved</span>'
+      : (e.clock_out ? '<span class="badge badge-yellow">Pending</span>' : '<span class="badge badge-blue">Clocked In</span>');
+    const approveBtn = !e.approved && e.clock_out
+      ? `<button class="btn btn-sm btn-outline" onclick="approveEntry(${e.id})" style="color:var(--success)">✓ Approve</button>`
+      : '';
+    return `<tr>
+      <td>${escHtml(name)}</td>
+      <td>${fmtDT(e.clock_in)}</td>
+      <td>${fmtDT(e.clock_out)}</td>
+      <td>${hours}</td>
+      <td>${badge}</td>
+      <td style="color:var(--text-muted);font-size:12px">${escHtml(e.approved_by || '—')}</td>
+      <td>
+        <div style="display:flex;gap:6px">
+          ${approveBtn}
+          <button class="btn btn-sm btn-outline" onclick="openEdit(${e.id})">Edit</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+async function loadPayroll() {
+  const start = document.getElementById('filter-start').value;
+  const end   = document.getElementById('filter-end').value;
+  const data  = await GET(`/api/timeclock/admin/payroll-summary?startDate=${start}&endDate=${end}`).catch(() => []);
+  const tbody = document.getElementById('payroll-tbody');
+  if (!data.length) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--text-muted)">No data</td></tr>';
+    return;
+  }
+  tbody.innerHTML = data.map(r => `<tr>
+    <td>${escHtml(r.name)}</td>
+    <td>${r.shifts}</td>
+    <td style="color:var(--gold);font-weight:600">${r.total_hours.toFixed(2)}h</td>
+    <td><span class="badge badge-green">${r.approved_shifts}</span></td>
+    <td>${r.pending_shifts > 0 ? `<span class="badge badge-yellow">${r.pending_shifts}</span>` : '—'}</td>
+  </tr>`).join('');
+}
+
+async function approveEntry(id) {
+  try {
+    await PUT(`/api/timeclock/${id}/approve`);
+    showAlert('Entry approved', 'success');
+    loadEntries(); loadPayroll();
+  } catch (e) { showAlert(e.message, 'error'); }
+}
+
+async function approveAll() {
+  const pending = entries.filter(e => !e.approved && e.clock_out);
+  if (!pending.length) { showAlert('No pending entries to approve', 'warning'); return; }
+  for (const e of pending) {
+    await PUT(`/api/timeclock/${e.id}/approve`).catch(() => {});
+  }
+  showAlert(`Approved ${pending.length} entries`, 'success');
+  loadEntries(); loadPayroll();
+}
+
+function openEdit(id) {
+  const e = entries.find(x => x.id === id);
+  if (!e) return;
+  editingId = id;
+  const name = `${e.first_name || ''} ${e.last_name || ''}`.trim() || e.staff_name || '—';
+  document.getElementById('edit-staff-name').value = name;
+  document.getElementById('edit-clock-in').value   = toLocalDT(e.clock_in);
+  document.getElementById('edit-clock-out').value  = toLocalDT(e.clock_out);
+  document.getElementById('edit-notes').value      = e.notes || '';
+  document.getElementById('edit-alert').innerHTML  = '';
+  openModal('edit-modal');
+}
+
+async function saveEdit() {
+  const clockIn  = document.getElementById('edit-clock-in').value;
+  const clockOut = document.getElementById('edit-clock-out').value;
+  const notes    = document.getElementById('edit-notes').value;
+  if (!clockIn) { document.getElementById('edit-alert').innerHTML = '<div class="alert alert-error">Clock-in time required</div>'; return; }
+  try {
+    await PUT(`/api/timeclock/${editingId}/edit`, {
+      clock_in:  new Date(clockIn).toISOString(),
+      clock_out: clockOut ? new Date(clockOut).toISOString() : null,
+      notes,
+    });
+    closeModal('edit-modal');
+    showAlert('Entry updated', 'success');
+    loadEntries(); loadPayroll();
+  } catch (e) { document.getElementById('edit-alert').innerHTML = `<div class="alert alert-error">${escHtml(e.message)}</div>`; }
+}
+
+function exportCSV() {
+  const start = document.getElementById('filter-start').value;
+  const end   = document.getElementById('filter-end').value;
+  const rows  = [
+    ['Staff','Clock In','Clock Out','Hours','Approved','Approved By'],
+    ...entries.map(e => [
+      (`${e.first_name||''} ${e.last_name||''}`.trim() || e.staff_name || ''),
+      e.clock_in  ? new Date(e.clock_in).toLocaleString()  : '',
+      e.clock_out ? new Date(e.clock_out).toLocaleString() : '',
+      e.total_hours || '',
+      e.approved ? 'Yes' : 'No',
+      e.approved_by || '',
+    ])
+  ];
+  const csv = rows.map(r => r.map(v => '"' + String(v).replace(/"/g,'""') + '"').join(',')).join('\n');
+  const a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+  a.download = `timeclock_${start}_to_${end}.csv`;
+  a.click();
+}
+
+(async () => {
+  const user = await requireLogin();
+  if (!user) return;
+  if (user.role !== 'admin') {
+    document.getElementById('content').innerHTML = '<div class="empty-state"><div class="icon">🔒</div><p>Admin access required</p></div>';
+    return;
+  }
+
+  // Load staff for filter dropdown
+  const staff = await GET('/api/timeclock/users').catch(() => []);
+  const sel = document.getElementById('filter-staff');
+  staff.forEach(s => {
+    const opt = document.createElement('option');
+    opt.value = s.id;
+    opt.textContent = `${s.first_name} ${s.last_name}`;
+    sel.appendChild(opt);
+  });
+
+  setThisMonth();
+})();
+</script>
+</body>
+</html>

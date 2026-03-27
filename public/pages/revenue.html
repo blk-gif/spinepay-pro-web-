@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Revenue — SpinePay Pro</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+<div id="app">
+  <div id="sidebar"></div>
+  <div id="main">
+    <div id="topbar"></div>
+    <div id="content" class="page-content">
+      <div id="alert-area"></div>
+
+      <!-- Date range filter -->
+      <div class="card" style="margin-bottom:16px">
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          <div class="form-group" style="margin:0;display:flex;align-items:center;gap:8px">
+            <label style="white-space:nowrap;margin:0">From</label>
+            <input type="date" id="filter-start" style="width:150px">
+          </div>
+          <div class="form-group" style="margin:0;display:flex;align-items:center;gap:8px">
+            <label style="white-space:nowrap;margin:0">To</label>
+            <input type="date" id="filter-end" style="width:150px">
+          </div>
+          <button class="btn btn-primary" onclick="loadAll()">Apply</button>
+          <button class="btn btn-outline" onclick="setThisYear()">This Year</button>
+          <button class="btn btn-outline" onclick="setThisMonth()">This Month</button>
+          <div style="margin-left:auto">
+            <button class="btn btn-outline" onclick="exportCSV()">⬇ Export CSV</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Stats row -->
+      <div class="stats-row" style="margin-bottom:20px">
+        <div class="stat-card"><div class="stat-value" id="stat-monthly">—</div><div class="stat-label">This Month</div></div>
+        <div class="stat-card"><div class="stat-value" id="stat-yearly">—</div><div class="stat-label">This Year</div></div>
+        <div class="stat-card"><div class="stat-value" id="stat-outstanding">—</div><div class="stat-label">Outstanding</div></div>
+        <div class="stat-card"><div class="stat-value" id="stat-claims">—</div><div class="stat-label">Total Claims</div></div>
+        <div class="stat-card"><div class="stat-value" id="stat-billed">—</div><div class="stat-label">Total Billed</div></div>
+        <div class="stat-card"><div class="stat-value" id="stat-collected">—</div><div class="stat-label">Collected</div></div>
+      </div>
+
+      <!-- Charts -->
+      <div style="display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:20px">
+        <div class="card">
+          <div class="card-header"><span class="card-title">Monthly Revenue (Last 12 Months)</span></div>
+          <canvas id="chart-monthly" height="120"></canvas>
+        </div>
+        <div class="card">
+          <div class="card-header"><span class="card-title">By Insurance</span></div>
+          <canvas id="chart-insurance" height="120"></canvas>
+        </div>
+      </div>
+
+      <!-- Insurance breakdown table -->
+      <div class="card">
+        <div class="card-header"><span class="card-title">Revenue by Insurance</span></div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Insurance</th><th>Claims</th><th>Billed</th><th>Collected</th><th>Collection Rate</th></tr></thead>
+            <tbody id="insurance-tbody"><tr><td colspan="5" style="text-align:center;padding:32px;color:var(--text-muted)">Loading…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Payments table -->
+      <div class="card" style="margin-top:16px">
+        <div class="card-header">
+          <span class="card-title">Claims in Period</span>
+          <span id="claims-count" style="color:var(--text-muted);font-size:13px"></span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Claim #</th><th>Patient</th><th>Insurance</th><th>Service Date</th><th>Billed</th><th>Paid</th><th>Status</th></tr></thead>
+            <tbody id="claims-tbody"><tr><td colspan="7" style="text-align:center;padding:32px;color:var(--text-muted)">Loading…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+<script src="/js/layout.js"></script>
+<script>
+let monthlyChart = null;
+let insuranceChart = null;
+let claimsData = [];
+let insuranceData = [];
+
+function setThisYear() {
+  const y = new Date().getFullYear();
+  document.getElementById('filter-start').value = `${y}-01-01`;
+  document.getElementById('filter-end').value = new Date().toISOString().split('T')[0];
+  loadAll();
+}
+
+function setThisMonth() {
+  const now = new Date();
+  const y = now.getFullYear(), m = String(now.getMonth()+1).padStart(2,'0');
+  document.getElementById('filter-start').value = `${y}-${m}-01`;
+  document.getElementById('filter-end').value = now.toISOString().split('T')[0];
+  loadAll();
+}
+
+async function loadAll() {
+  const start = document.getElementById('filter-start').value;
+  const end   = document.getElementById('filter-end').value;
+  if (!start || !end) return;
+
+  const qs = `?start=${start}&end=${end}`;
+  const [stats, monthly, insurance, claims] = await Promise.all([
+    GET('/api/billing/revenue/stats').catch(() => ({})),
+    GET('/api/billing/revenue/monthly').catch(() => []),
+    GET('/api/billing/revenue/by-insurance' + qs).catch(() => []),
+    GET('/api/billing/claims' + qs).catch(() => []),
+  ]);
+
+  // Stats
+  document.getElementById('stat-monthly').textContent = fmtMoney(stats.monthly_revenue || 0);
+  document.getElementById('stat-yearly').textContent  = fmtMoney(stats.yearly_revenue  || 0);
+  document.getElementById('stat-outstanding').textContent = fmtMoney(stats.outstanding_balance || 0);
+
+  // Revenue in period from claims
+  const periodClaims = Array.isArray(claims) ? claims : [];
+  const totalBilled    = periodClaims.reduce((s, c) => s + parseFloat(c.billed_amount  || 0), 0);
+  const totalCollected = periodClaims.reduce((s, c) => s + parseFloat(c.paid_amount || 0), 0);
+  document.getElementById('stat-claims').textContent    = periodClaims.length;
+  document.getElementById('stat-billed').textContent    = fmtMoney(totalBilled);
+  document.getElementById('stat-collected').textContent = fmtMoney(totalCollected);
+  document.getElementById('claims-count').textContent   = `${periodClaims.length} claims`;
+  claimsData = periodClaims;
+
+  // Monthly chart
+  const labels   = monthly.map(r => r.month);
+  const revenues = monthly.map(r => r.revenue);
+  if (monthlyChart) { monthlyChart.destroy(); }
+  const ctx1 = document.getElementById('chart-monthly').getContext('2d');
+  monthlyChart = new Chart(ctx1, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{ label: 'Revenue', data: revenues, backgroundColor: 'rgba(255,215,0,0.6)', borderColor: '#FFD700', borderWidth: 1 }]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: {
+        y: { ticks: { color: '#888', callback: v => '$' + v.toLocaleString() }, grid: { color: 'rgba(255,255,255,.05)' } },
+        x: { ticks: { color: '#888' }, grid: { display: false } }
+      }
+    }
+  });
+
+  // Insurance pie chart
+  insuranceData = Array.isArray(insurance) ? insurance : [];
+  const insLabels = insuranceData.map(r => r.insurance);
+  const insData   = insuranceData.map(r => r.collected);
+  const palette = ['#FFD700','#4caf7d','#5bc0de','#e05252','#f0a500','#9b59b6','#1abc9c','#e67e22','#3498db','#e91e63'];
+  if (insuranceChart) { insuranceChart.destroy(); }
+  const ctx2 = document.getElementById('chart-insurance').getContext('2d');
+  insuranceChart = new Chart(ctx2, {
+    type: 'doughnut',
+    data: {
+      labels: insLabels,
+      datasets: [{ data: insData, backgroundColor: palette.slice(0, insLabels.length), borderWidth: 1, borderColor: '#1a1a1a' }]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { position: 'bottom', labels: { color: '#ccc', font: { size: 11 }, boxWidth: 12 } } }
+    }
+  });
+
+  // Insurance table
+  const tbody = document.getElementById('insurance-tbody');
+  if (!insuranceData.length) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:32px;color:var(--text-muted)">No data</td></tr>';
+  } else {
+    tbody.innerHTML = insuranceData.map(r => {
+      const rate = r.billed > 0 ? Math.round((r.collected / r.billed) * 100) : 0;
+      return `<tr><td>${escHtml(r.insurance)}</td><td>${r.claims}</td><td>${fmtMoney(r.billed)}</td><td>${fmtMoney(r.collected)}</td><td>${rate}%</td></tr>`;
+    }).join('');
+  }
+
+  // Claims table
+  const ctbody = document.getElementById('claims-tbody');
+  if (!periodClaims.length) {
+    ctbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:32px;color:var(--text-muted)">No claims in period</td></tr>';
+  } else {
+    ctbody.innerHTML = periodClaims.map(c => `<tr>
+      <td>${escHtml(c.claim_number || '—')}</td>
+      <td>${escHtml((c.first_name || c.patient_name || '') + ' ' + (c.last_name || ''))}</td>
+      <td>${escHtml(c.insurance_name || '—')}</td>
+      <td>${c.service_date ? c.service_date.split('T')[0] : '—'}</td>
+      <td>${fmtMoney(c.billed_amount)}</td>
+      <td>${fmtMoney(c.paid_amount)}</td>
+      <td>${statusBadge(c.status)}</td>
+    </tr>`).join('');
+  }
+}
+
+function exportCSV() {
+  const start = document.getElementById('filter-start').value;
+  const end   = document.getElementById('filter-end').value;
+  const rows  = [
+    ['Claim #','Patient','Insurance','Service Date','Billed','Paid','Status'],
+    ...claimsData.map(c => [
+      c.claim_number || '',
+      ((c.first_name || c.patient_name || '') + ' ' + (c.last_name || '')).trim(),
+      c.insurance_name || '',
+      c.service_date ? c.service_date.split('T')[0] : '',
+      c.billed_amount || 0,
+      c.paid_amount || 0,
+      c.status || '',
+    ])
+  ];
+  const csv = rows.map(r => r.map(v => '"' + String(v).replace(/"/g,'""') + '"').join(',')).join('\n');
+  const a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+  a.download = `revenue_${start}_to_${end}.csv`;
+  a.click();
+}
+
+(async () => {
+  const user = await requireLogin();
+  if (!user) return;
+  if (user.role !== 'admin') {
+    document.getElementById('content').innerHTML = '<div class="empty-state"><div class="icon">🔒</div><p>Admin access required</p></div>';
+    return;
+  }
+  setThisYear();
+})();
+</script>
+</body>
+</html>

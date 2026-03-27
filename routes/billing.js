@@ -176,4 +176,74 @@ router.get('/revenue', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ── REVENUE STATS (dashboard card) ───────────────────────────────────────────
+
+router.get('/revenue/stats', async (req, res) => {
+  try {
+    if (req.session.staff.role !== 'admin') return res.status(403).json({ error: 'Admin required' });
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+    const yearStart  = new Date(now.getFullYear(), 0, 1).toISOString().split('T')[0];
+    const today      = now.toISOString().split('T')[0];
+    const [monthly, yearly, outstanding] = await Promise.all([
+      pool.query(`SELECT COALESCE(SUM(amount),0) as total FROM payments WHERE date BETWEEN $1 AND $2`, [monthStart, today]),
+      pool.query(`SELECT COALESCE(SUM(amount),0) as total FROM payments WHERE date BETWEEN $1 AND $2`, [yearStart, today]),
+      pool.query(`SELECT COALESCE(SUM(billed_amount - paid_amount),0) as total FROM billing_claims WHERE status NOT IN ('paid','denied')`),
+    ]);
+    res.json({
+      monthly_revenue: parseFloat(monthly.rows[0].total),
+      yearly_revenue: parseFloat(yearly.rows[0].total),
+      outstanding_balance: parseFloat(outstanding.rows[0].total),
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── REVENUE MONTHLY (last 12 months) ─────────────────────────────────────────
+
+router.get('/revenue/monthly', async (req, res) => {
+  try {
+    if (req.session.staff.role !== 'admin') return res.status(403).json({ error: 'Admin required' });
+    const { rows } = await pool.query(`
+      SELECT
+        TO_CHAR(date_trunc('month', date), 'Mon YYYY') AS month,
+        date_trunc('month', date) AS month_date,
+        COALESCE(SUM(amount), 0) AS revenue
+      FROM payments
+      WHERE date >= NOW() - INTERVAL '12 months'
+      GROUP BY date_trunc('month', date)
+      ORDER BY date_trunc('month', date) ASC
+    `);
+    res.json(rows.map(r => ({ month: r.month, revenue: parseFloat(r.revenue) })));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── REVENUE BY INSURANCE ──────────────────────────────────────────────────────
+
+router.get('/revenue/by-insurance', async (req, res) => {
+  try {
+    if (req.session.staff.role !== 'admin') return res.status(403).json({ error: 'Admin required' });
+    const { start, end } = req.query;
+    const s = start || new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0];
+    const e = end || new Date().toISOString().split('T')[0];
+    const { rows } = await pool.query(`
+      SELECT
+        COALESCE(insurance_name, 'Unknown') AS insurance,
+        COUNT(*) AS claims,
+        COALESCE(SUM(billed_amount), 0) AS billed,
+        COALESCE(SUM(paid_amount), 0) AS collected
+      FROM billing_claims
+      WHERE service_date BETWEEN $1 AND $2
+      GROUP BY COALESCE(insurance_name, 'Unknown')
+      ORDER BY collected DESC
+      LIMIT 15
+    `, [s, e]);
+    res.json(rows.map(r => ({
+      insurance: r.insurance,
+      claims: parseInt(r.claims),
+      billed: parseFloat(r.billed),
+      collected: parseFloat(r.collected),
+    })));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 module.exports = router;

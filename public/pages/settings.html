@@ -170,22 +170,33 @@ async function loadStaff() {
 }
 
 function genPass() {
-  const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+  // No ambiguous chars: 0/O/I/1/l excluded
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
   let pass = '';
-  for (let i = 0; i < 10; i++) pass += chars[Math.floor(Math.random() * chars.length)];
-  // Ensure at least one digit
-  pass = pass.slice(0, 9) + String(Math.floor(Math.random() * 10));
+  for (let i = 0; i < 9; i++) pass += chars.charAt(Math.floor(Math.random() * chars.length));
+  // Guarantee at least one digit at end
+  pass += String(Math.floor(Math.random() * 8) + 2);
   document.getElementById('ns-pass').value = pass;
 }
 
-function copyPass() {
-  const val = document.getElementById('ns-pass').value;
-  navigator.clipboard.writeText(val).then(() => {
-    const btn = document.getElementById('copyBtn');
-    btn.textContent = 'Copied!';
+async function copyPass() {
+  const val = document.getElementById('ns-pass').value.trim();
+  const btn = document.getElementById('copyBtn');
+  try {
+    await navigator.clipboard.writeText(val);
+    btn.textContent = '✓ Copied!';
     btn.style.color = '#2ecc71';
     setTimeout(() => { btn.textContent = 'Copy'; btn.style.color = ''; }, 2000);
-  });
+  } catch {
+    // Fallback for browsers without clipboard API
+    const inp = document.getElementById('ns-pass');
+    inp.select();
+    inp.setSelectionRange(0, 99999);
+    document.execCommand('copy');
+    btn.textContent = '✓ Copied!';
+    btn.style.color = '#2ecc71';
+    setTimeout(() => { btn.textContent = 'Copy'; btn.style.color = ''; }, 2000);
+  }
 }
 
 function openAddStaff() {

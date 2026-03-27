@@ -26,7 +26,7 @@
     { label: 'Referrals',        href: '/referrals',      icon: '🔗', adminOnly: false },
     { section: 'STAFF' },
     { label: 'Time Clock',       href: '/time-clock',     icon: '⏰', adminOnly: false },
-    { label: 'Reminders',        href: '/reminders',      icon: '🔔', adminOnly: true  },
+    { label: 'Reminders',        href: '/reminders',      icon: '🔔', adminOnly: false },
     { section: 'SYSTEM' },
     { label: 'Staff',            href: '/staff',          icon: '👤', adminOnly: true  },
     { label: 'Settings',         href: '/settings',       icon: '⚙️', adminOnly: true  },

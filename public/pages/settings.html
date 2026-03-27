@@ -96,6 +96,7 @@
     </div>
   </div>
 </div>
+<script src="/js/layout.js"></script>
 <script>
 async function apiGet(url) {
   const r = await fetch(url, { credentials: 'include' });
@@ -294,13 +295,12 @@ document.getElementById('addStaffModal').addEventListener('click', function(e) {
 });
 
 (async () => {
-  const me = await apiGet('/api/auth/me').catch(() => null);
-  if (!me || !me.user) { window.location.href = '/index.html'; return; }
+  const user = await requireLogin();
+  if (!user) return;
   loadSettings();
   loadStaff();
 })();
 
 </script>
-<script src="/js/layout.js"></script>
 </body>
 </html>

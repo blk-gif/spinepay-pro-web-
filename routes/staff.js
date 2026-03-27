@@ -7,6 +7,34 @@ const { auditLog } = require('../middleware/audit');
 
 const router = Router();
 
+async function sendWelcomeEmail(staffMember, tempPassword) {
+  if (!process.env.SENDGRID_API_KEY) return;
+  if (!staffMember.email) return;
+  try {
+    const sgMail = require('@sendgrid/mail');
+    sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+    const practiceEmail = process.env.PRACTICE_EMAIL || 'noreply@spinepay.com';
+    await sgMail.send({
+      to: staffMember.email,
+      from: practiceEmail,
+      subject: 'Welcome to SpinePay Pro — Your Account is Ready',
+      html: `
+        <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto">
+          <h2 style="color:#1a1a1a">Welcome to SpinePay Pro</h2>
+          <p>Hi ${staffMember.first_name},</p>
+          <p>Your account at Walden Bailey Chiropractic has been created.</p>
+          <p><strong>Username:</strong> ${staffMember.username}<br>
+          <strong>Temporary Password:</strong> <code style="background:#f4f4f4;padding:2px 6px;border-radius:3px">${tempPassword}</code></p>
+          <p>Please log in and change your password on first sign-in.</p>
+          <p style="color:#888;font-size:12px">This is an automated message from SpinePay Pro.</p>
+        </div>
+      `,
+    });
+  } catch (err) {
+    console.error('[Staff] SendGrid error:', err.message);
+  }
+}
+
 router.get('/', async (req, res) => {
   try {
     const { rows } = await pool.query(
@@ -29,6 +57,7 @@ router.post('/', async (req, res) => {
       [first_name, last_name, username, hash, role||'Staff', email||null]
     );
     await auditLog(req, 'CREATE', 'staff', rows[0].id);
+    await sendWelcomeEmail({ first_name, username: rows[0].username, email: email || null }, temp_password_plain);
     res.status(201).json(rows[0]);
   } catch (err) {
     if (err.code === '23505') return res.status(409).json({ error: 'Username already exists' });
@@ -50,6 +79,15 @@ router.post('/:id/reset-password', async (req, res) => {
     if (!newPassword || newPassword.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
     const hash = await bcrypt.hash(newPassword, 10);
     await pool.query('UPDATE staff SET password = $1, temp_password = TRUE WHERE id = $2', [hash, req.params.id]);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.put('/:id/deactivate', async (req, res) => {
+  try {
+    await pool.query('UPDATE staff SET active = FALSE WHERE id = $1', [req.params.id]);
+    await pool.query('DELETE FROM session WHERE sess::jsonb->>\'staff\' IS NOT NULL AND (sess::jsonb->\'staff\'->>\'id\')::int = $1', [req.params.id]);
+    await auditLog(req, 'DEACTIVATE', 'staff', req.params.id);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

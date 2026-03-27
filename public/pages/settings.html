@@ -32,6 +32,67 @@
           <button class="btn btn-primary" onclick="saveSettings()">Save Settings</button>
         </div>
       </div>
+
+      <!-- Staff Accounts -->
+      <div class="card" style="max-width:900px;margin-top:24px">
+        <div class="card-header" style="display:flex;align-items:center;justify-content:space-between">
+          <span class="card-title">Staff Accounts</span>
+          <button class="btn btn-primary" onclick="openAddStaff()">+ Add Staff</button>
+        </div>
+        <table style="width:100%;border-collapse:collapse;margin-top:12px">
+          <thead>
+            <tr style="border-bottom:1px solid #333;font-size:12px;color:#888;text-transform:uppercase;text-align:left">
+              <th style="padding:8px 10px">Name</th>
+              <th style="padding:8px 10px">Username</th>
+              <th style="padding:8px 10px">Role</th>
+              <th style="padding:8px 10px">Email</th>
+              <th style="padding:8px 10px">Status</th>
+              <th style="padding:8px 10px">Onboarding</th>
+              <th style="padding:8px 10px">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="staff-tbody">
+            <tr><td colspan="7" style="padding:16px 10px;color:#666;text-align:center">Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Add Staff Modal -->
+      <div id="addStaffModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;align-items:center;justify-content:center">
+        <div style="background:#242424;border:1px solid #444;border-radius:12px;padding:32px;width:100%;max-width:480px;position:relative">
+          <button onclick="closeAddStaff()" style="position:absolute;top:12px;right:16px;background:none;border:none;color:#888;font-size:20px;cursor:pointer">&times;</button>
+          <h3 style="color:#FFD700;margin-bottom:20px">Add Staff Member</h3>
+          <div id="addStaffErr" style="display:none;background:rgba(231,76,60,.12);border:1px solid rgba(231,76,60,.4);color:#e74c3c;border-radius:6px;padding:9px 12px;font-size:13px;margin-bottom:14px"></div>
+          <div class="form-row">
+            <div class="form-group"><label>First Name</label><input id="ns-first" type="text" /></div>
+            <div class="form-group"><label>Last Name</label><input id="ns-last" type="text" /></div>
+          </div>
+          <div class="form-row">
+            <div class="form-group"><label>Username</label><input id="ns-user" type="text" autocomplete="off" /></div>
+            <div class="form-group">
+              <label>Role</label>
+              <select id="ns-role" style="width:100%;background:#1a1a1a;border:1px solid #444;border-radius:6px;padding:9px 12px;color:#e0e0e0;font-family:inherit;font-size:14px">
+                <option value="Staff">Staff</option>
+                <option value="Admin">Admin</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-group"><label>Email (optional)</label><input id="ns-email" type="email" /></div>
+          <div class="form-group">
+            <label>Temporary Password</label>
+            <div style="display:flex;gap:8px;align-items:center">
+              <input id="ns-pass" type="text" readonly style="flex:1;background:#1a1a1a;border:1px solid #444;border-radius:6px;padding:9px 12px;color:#FFD700;font-family:monospace;font-size:14px" />
+              <button onclick="genPass()" style="padding:9px 14px;background:#333;border:1px solid #444;color:#ccc;border-radius:6px;cursor:pointer;white-space:nowrap">Regenerate</button>
+              <button onclick="copyPass()" id="copyBtn" style="padding:9px 14px;background:#333;border:1px solid #444;color:#ccc;border-radius:6px;cursor:pointer">Copy</button>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:20px">
+            <input type="checkbox" id="ns-email-check" style="width:16px;height:16px;accent-color:#FFD700" checked />
+            <label for="ns-email-check" style="font-size:13px;color:#aaa;cursor:pointer">Send welcome email with login credentials</label>
+          </div>
+          <button class="btn btn-primary" style="width:100%" onclick="submitAddStaff()">Create Account</button>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -79,10 +140,139 @@ async function saveSettings() {
     showMsg(e.message || 'Save failed', 'error');
   }
 }
+// ── Staff ───────────────────────────────────────────────────────────────────
+async function loadStaff() {
+  const rows = await apiGet('/api/staff').catch(() => []);
+  const tbody = document.getElementById('staff-tbody');
+  if (!Array.isArray(rows) || rows.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" style="padding:16px 10px;color:#666;text-align:center">No staff found.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = rows.map(s => `
+    <tr style="border-bottom:1px solid #2a2a2a;font-size:13px">
+      <td style="padding:10px">${s.first_name} ${s.last_name}</td>
+      <td style="padding:10px;color:#aaa">${s.username}</td>
+      <td style="padding:10px"><span style="background:rgba(255,215,0,.1);color:#FFD700;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600">${s.role}</span></td>
+      <td style="padding:10px;color:#aaa">${s.email || '—'}</td>
+      <td style="padding:10px"><span style="color:${s.active ? '#2ecc71' : '#e74c3c'}">${s.active ? 'Active' : 'Inactive'}</span></td>
+      <td style="padding:10px;font-size:12px;color:#888">
+        ${s.temp_password ? '<span style="color:#e67e22">⚠ Password not set</span>' : s.hipaa_signed ? '<span style="color:#2ecc71">✓ Complete</span>' : '<span style="color:#e67e22">⚠ HIPAA pending</span>'}
+      </td>
+      <td style="padding:10px">
+        ${s.active
+          ? `<button onclick="deactivateStaff(${s.id},'${s.first_name} ${s.last_name}')" style="background:rgba(231,76,60,.12);border:1px solid rgba(231,76,60,.4);color:#e74c3c;padding:4px 10px;border-radius:6px;cursor:pointer;font-size:12px">Deactivate</button>`
+          : `<button onclick="activateStaff(${s.id})" style="background:rgba(46,204,113,.12);border:1px solid rgba(46,204,113,.4);color:#2ecc71;padding:4px 10px;border-radius:6px;cursor:pointer;font-size:12px">Activate</button>`
+        }
+      </td>
+    </tr>
+  `).join('');
+}
+
+function genPass() {
+  const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+  let pass = '';
+  for (let i = 0; i < 10; i++) pass += chars[Math.floor(Math.random() * chars.length)];
+  // Ensure at least one digit
+  pass = pass.slice(0, 9) + String(Math.floor(Math.random() * 10));
+  document.getElementById('ns-pass').value = pass;
+}
+
+function copyPass() {
+  const val = document.getElementById('ns-pass').value;
+  navigator.clipboard.writeText(val).then(() => {
+    const btn = document.getElementById('copyBtn');
+    btn.textContent = 'Copied!';
+    btn.style.color = '#2ecc71';
+    setTimeout(() => { btn.textContent = 'Copy'; btn.style.color = ''; }, 2000);
+  });
+}
+
+function openAddStaff() {
+  genPass();
+  document.getElementById('ns-first').value = '';
+  document.getElementById('ns-last').value  = '';
+  document.getElementById('ns-user').value  = '';
+  document.getElementById('ns-email').value = '';
+  document.getElementById('ns-role').value  = 'Staff';
+  document.getElementById('addStaffErr').style.display = 'none';
+  const modal = document.getElementById('addStaffModal');
+  modal.style.display = 'flex';
+}
+
+function closeAddStaff() {
+  document.getElementById('addStaffModal').style.display = 'none';
+}
+
+async function submitAddStaff() {
+  const errEl = document.getElementById('addStaffErr');
+  errEl.style.display = 'none';
+  const body = {
+    first_name: document.getElementById('ns-first').value.trim(),
+    last_name:  document.getElementById('ns-last').value.trim(),
+    username:   document.getElementById('ns-user').value.trim().toLowerCase(),
+    role:       document.getElementById('ns-role').value,
+    email:      document.getElementById('ns-email').value.trim(),
+    temp_password_plain: document.getElementById('ns-pass').value,
+  };
+  if (!body.first_name || !body.last_name || !body.username) {
+    errEl.textContent = 'First name, last name, and username are required.';
+    errEl.style.display = 'block';
+    return;
+  }
+  try {
+    const r = await fetch('/api/staff', {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || 'Failed');
+    closeAddStaff();
+    showMsg('Staff member created successfully.', 'success');
+    loadStaff();
+  } catch (e) {
+    errEl.textContent = e.message;
+    errEl.style.display = 'block';
+  }
+}
+
+async function deactivateStaff(id, name) {
+  if (!confirm(`Deactivate ${name}? They will be logged out immediately.`)) return;
+  try {
+    const r = await fetch(`/api/staff/${id}/deactivate`, { method: 'PUT', credentials: 'include' });
+    if (!r.ok) { const d = await r.json(); throw new Error(d.error); }
+    showMsg(`${name} has been deactivated.`, 'success');
+    loadStaff();
+  } catch (e) {
+    showMsg(e.message, 'error');
+  }
+}
+
+async function activateStaff(id) {
+  try {
+    const r = await fetch(`/api/staff/${id}/active`, {
+      method: 'PATCH', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ active: true }),
+    });
+    if (!r.ok) { const d = await r.json(); throw new Error(d.error); }
+    showMsg('Staff member reactivated.', 'success');
+    loadStaff();
+  } catch (e) {
+    showMsg(e.message, 'error');
+  }
+}
+
+// Close modal on backdrop click
+document.getElementById('addStaffModal').addEventListener('click', function(e) {
+  if (e.target === this) closeAddStaff();
+});
+
 (async () => {
   const me = await apiGet('/api/auth/me').catch(() => null);
   if (!me || !me.user) { window.location.href = '/index.html'; return; }
   loadSettings();
+  loadStaff();
 })();
 </script>
 </body>

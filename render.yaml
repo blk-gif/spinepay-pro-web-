@@ -16,6 +16,10 @@ services:
         fromDatabase:
           name: spinepay-db
           property: connectionString
+      - key: SENDGRID_API_KEY
+        sync: false
+      - key: PRACTICE_EMAIL
+        value: drward@waldenbaileychiropratic.com
 
 databases:
   - name: spinepay-db

@@ -51,10 +51,14 @@ router.post('/login', loginLimiter, async (req, res) => {
     };
     req.session.lastActivity = Date.now();
 
+    let redirect = '/app.html';
+    if (staff.temp_password) redirect = '/change-password.html';
+    else if (!staff.hipaa_signed) redirect = '/hipaa.html';
+
     res.json({
       success: true,
       user: req.session.staff,
-      requiresOnboarding: staff.temp_password || !staff.hipaa_signed,
+      redirect,
     });
   } catch (err) {
     console.error('[Auth] Login error:', err.message);
@@ -81,10 +85,14 @@ router.post('/change-password', async (req, res) => {
     if (!newPassword || newPassword.length < 8) {
       return res.status(400).json({ error: 'Password must be at least 8 characters' });
     }
+    if (!/\d/.test(newPassword)) {
+      return res.status(400).json({ error: 'Password must contain at least one number' });
+    }
     const hash = await bcrypt.hash(newPassword, 10);
     await pool.query('UPDATE staff SET password = $1, temp_password = FALSE WHERE id = $2', [hash, req.session.staff.id]);
     req.session.staff.temp_password = false;
-    res.json({ success: true });
+    const redirect = req.session.staff.hipaa_signed ? '/app.html' : '/hipaa.html';
+    res.json({ success: true, redirect });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -103,7 +111,7 @@ router.post('/hipaa-sign', async (req, res) => {
       [req.session.staff.id, signature, now]
     );
     req.session.staff.hipaa_signed = true;
-    res.json({ success: true });
+    res.json({ success: true, redirect: '/role-confirm.html' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

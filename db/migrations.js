@@ -348,30 +348,6 @@ async function runMigrations() {
     // ── Column additions for existing databases ───────────────────────────────
     await client.query(`ALTER TABLE time_clock ADD COLUMN IF NOT EXISTS approved_at TIMESTAMPTZ`).catch(() => {});
 
-    // ── Unique constraint on reminder templates (prevents duplicate seeding) ──
-    await client.query(`
-      ALTER TABLE reminder_templates
-      ADD CONSTRAINT IF NOT EXISTS unique_reminder_template
-      UNIQUE (name, type, trigger_hours)
-    `).catch(() => {});
-
-    // ── Remove duplicate reminder templates, keep highest id per unique combo ─
-    await client.query(`
-      DELETE FROM reminder_templates
-      WHERE id NOT IN (
-        SELECT MAX(id)
-        FROM reminder_templates
-        GROUP BY name, type, trigger_hours
-      )
-    `).catch(() => {});
-
-    // Default reminder templates
-    await client.query(`
-      INSERT INTO reminder_templates (name, type, trigger_hours, subject, body) VALUES
-        ('24hr SMS', 'sms', 24, NULL, 'Hi {{patient_name}}, reminder: appointment tomorrow at {{time}}. Reply STOP to opt out.'),
-        ('48hr Email', 'email', 48, 'Appointment Reminder — Walden Bailey Chiropractic', 'Dear {{patient_name}},\n\nThis is a reminder of your appointment on {{date}} at {{time}}.\n\nWalden Bailey Chiropractic\n(716) 893-9200')
-      ON CONFLICT (name, type, trigger_hours) DO NOTHING;
-    `);
 
     // Default practice settings
     await client.query(`
@@ -396,6 +372,32 @@ async function runMigrations() {
   } finally {
     client.release();
   }
+
+  // ── Run outside the transaction so a failed constraint add doesn't abort ──
+  // Dedup first (required before adding unique constraint)
+  await pool.query(`
+    DELETE FROM reminder_templates
+    WHERE id NOT IN (
+      SELECT MAX(id)
+      FROM reminder_templates
+      GROUP BY name, type, trigger_hours
+    )
+  `).catch(err => console.error('[Migrations] Dedup reminder_templates:', err.message));
+
+  // Add unique constraint now that duplicates are gone
+  await pool.query(`
+    ALTER TABLE reminder_templates
+    ADD CONSTRAINT unique_reminder_template
+    UNIQUE (name, type, trigger_hours)
+  `).catch(() => {}); // silently skip if constraint already exists
+
+  // Seed default reminder templates (safe now that constraint exists)
+  await pool.query(`
+    INSERT INTO reminder_templates (name, type, trigger_hours, subject, body) VALUES
+      ('24hr SMS', 'sms', 24, NULL, 'Hi {{patient_name}}, reminder: appointment tomorrow at {{time}}. Reply STOP to opt out.'),
+      ('48hr Email', 'email', 48, 'Appointment Reminder — Walden Bailey Chiropractic', 'Dear {{patient_name}},\n\nThis is a reminder of your appointment on {{date}} at {{time}}.\n\nWalden Bailey Chiropractic\n(716) 893-9200')
+    ON CONFLICT (name, type, trigger_hours) DO NOTHING
+  `).catch(err => console.error('[Migrations] Seed reminder_templates:', err.message));
 }
 
 module.exports = runMigrations;

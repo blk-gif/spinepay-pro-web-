@@ -185,19 +185,12 @@ window.Reminders = (() => {
   // ── Render ─────────────────────────────────────────────────────────────────
   async function render() {
     const view = document.getElementById('view-reminders');
-    const user = getCurrentUser();
-
-    if (user?.role !== 'admin') {
-      view.innerHTML = buildAccessDenied();
-      return;
-    }
 
     if (!view.querySelector('.section-header')) {
       view.innerHTML = buildHTML();
       bindEvents();
     }
 
-    // Show the New Template button now that we know it's admin
     const newTplBtn = document.getElementById('newTemplateBtn');
     if (newTplBtn) newTplBtn.style.display = '';
 

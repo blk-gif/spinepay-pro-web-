@@ -22,6 +22,10 @@
 html, body { height: 100%; }
 body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); font-size: 14px; }
 
+/* Prevent flash of unstyled layout — hidden until layout.js finishes auth + nav render */
+#app { visibility: hidden; }
+body.layout-ready #app { visibility: visible; }
+
 a { color: var(--gold); text-decoration: none; }
 a:hover { color: var(--gold-light); }
 

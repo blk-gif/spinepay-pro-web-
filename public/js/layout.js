@@ -209,6 +209,9 @@
         window.location.href = '/index.html';
       };
     }
+
+    // ── Reveal page — no more flash ────────────────────────────────────
+    document.body.classList.add('layout-ready');
   }
 
   document.addEventListener('DOMContentLoaded', initLayout);

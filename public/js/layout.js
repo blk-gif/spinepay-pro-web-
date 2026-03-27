@@ -38,9 +38,9 @@
   // ── Detect active page ────────────────────────────────────────────────
   function getCurrentPage() {
     return window.location.pathname
-      .replace(/^\\/pages\\//, '/')
-      .replace(/\\.html$/, '')
-      .replace(/^\\//, '') || 'dashboard';
+      .replace(/^\/pages\//, '/')
+      .replace(/\.html$/, '')
+      .replace(/^\//, '') || 'dashboard';
   }
 
   // ── Utility globals ───────────────────────────────────────────────────
@@ -142,102 +142,90 @@
   // ── Layout init (runs on every page load) ─────────────────────────────
 
   async function initLayout() {
+    // ── Auth check ─────────────────────────────────────────────────────
+    let user;
     try {
-      // ── Auth check ───────────────────────────────────────────────────
-      let user;
-      try {
-        const r = await fetch('/api/auth/me', { credentials: 'include' });
-        if (!r.ok) { window.location.href = '/index.html'; return; }
-        const data = await r.json();
-        if (!data.user) { window.location.href = '/index.html'; return; }
-        user = data.user;
-        _user = user;
-      } catch {
-        window.location.href = '/index.html';
-        return;
-      }
+      const r = await fetch('/api/auth/me', { credentials: 'include' });
+      if (!r.ok) { window.location.href = '/index.html'; return; }
+      const data = await r.json();
+      if (!data.user) { window.location.href = '/index.html'; return; }
+      user = data.user;
+      _user = user;
+    } catch {
+      window.location.href = '/index.html';
+      return;
+    }
 
-      const isAdmin = user.role === 'admin';
-      const currentPage = getCurrentPage();
+    const isAdmin = user.role === 'admin';
+    const currentPage = getCurrentPage();
 
-      // ── Build full sidebar ─────────────────────────────────────────
-      const sidebarEl = document.getElementById('sidebar');
-      if (sidebarEl) {
-        let navHtml = '';
-        for (const item of NAV) {
-          if (item.section) {
-            if (!isAdmin && ['BILLING', 'SYSTEM'].includes(item.section)) continue;
-            navHtml += `<div style="font-size:10px;font-weight:700;letter-spacing:1.2px;color:var(--text-muted,#555);padding:14px 16px 4px;text-transform:uppercase">${item.section}</div>`;
-            continue;
-          }
-          if (item.adminOnly && !isAdmin) continue;
-          const pageKey = item.href.replace(/^\//, '');
-          const active  = currentPage === pageKey || window.location.pathname.includes('/' + pageKey);
-          const activeBg = active ? 'rgba(255,215,0,.08)' : 'transparent';
-          const activeColor = active ? 'var(--gold,#FFD700)' : 'var(--text,#ccc)';
-          const activeBorder = active ? 'var(--gold,#FFD700)' : 'transparent';
-          const activeWeight = active ? '600' : '400';
-          navHtml += `<a href="${item.href}" style="display:flex;align-items:center;gap:10px;padding:10px 16px;text-decoration:none;color:${activeColor};background:${activeBg};border-left:3px solid ${activeBorder};font-size:13px;font-weight:${activeWeight};transition:background .15s,color .15s"
-            onmouseover="this.style.background='rgba(255,255,255,.04)'"
-            onmouseout="this.style.background='${activeBg}'"
-          >${item.icon}&nbsp;${item.label}</a>`;
+    // ── Build full sidebar ─────────────────────────────────────────
+    const sidebarEl = document.getElementById('sidebar');
+    if (sidebarEl) {
+      let navHtml = '';
+      for (const item of NAV) {
+        if (item.section) {
+          if (!isAdmin && ['BILLING', 'SYSTEM'].includes(item.section)) continue;
+          navHtml += `<div style="font-size:10px;font-weight:700;letter-spacing:1.2px;color:var(--text-muted,#555);padding:14px 16px 4px;text-transform:uppercase">${item.section}</div>`;
+          continue;
         }
+        if (item.adminOnly && !isAdmin) continue;
+        const pageKey = item.href.replace(/^\//, '');
+        const active  = currentPage === pageKey || window.location.pathname.includes('/' + pageKey);
+        const activeBg = active ? 'rgba(255,215,0,.08)' : 'transparent';
+        const activeColor = active ? 'var(--gold,#FFD700)' : 'var(--text,#ccc)';
+        const activeBorder = active ? 'var(--gold,#FFD700)' : 'transparent';
+        const activeWeight = active ? '600' : '400';
+        navHtml += `<a href="${item.href}" style="display:flex;align-items:center;gap:10px;padding:10px 16px;text-decoration:none;color:${activeColor};background:${activeBg};border-left:3px solid ${activeBorder};font-size:13px;font-weight:${activeWeight};transition:background .15s,color .15s"
+          onmouseover="this.style.background='rgba(255,255,255,.04)'"
+          onmouseout="this.style.background='${activeBg}'"
+        >${item.icon}&nbsp;${item.label}</a>`;
+      }
 
-        const initials = (user.full_name || user.username || 'U').charAt(0).toUpperCase();
-        sidebarEl.innerHTML = `
-          <div style="padding:18px 16px 14px;border-bottom:1px solid var(--border,#3a3a3a)">
-            <h1 style="font-size:15px;font-weight:700;color:var(--gold,#FFD700);line-height:1.2">SpinePay Pro</h1>
-            <p style="font-size:11px;color:var(--text-muted,#888);margin-top:2px">Walden Bailey Chiropractic</p>
-          </div>
-          <nav id="nav-links" style="flex:1;overflow-y:auto">${navHtml}</nav>
-          <div id="sidebar-footer" style="margin-top:auto;padding:12px 16px;border-top:1px solid var(--border,#3a3a3a)">
-            <div style="display:flex;align-items:center;gap:10px">
-              <div style="width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#d4af37,#a08020);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#000;flex-shrink:0">${initials}</div>
-              <div style="flex:1;min-width:0">
-                <div style="font-size:13px;font-weight:600;color:#e0e0e0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${window.escHtml(user.full_name || user.username)}</div>
-                <div style="font-size:11px;color:var(--gold,#FFD700);text-transform:uppercase;letter-spacing:.5px">${user.role}</div>
-              </div>
+      const initials = (user.full_name || user.username || 'U').charAt(0).toUpperCase();
+      sidebarEl.innerHTML = `
+        <div style="padding:18px 16px 14px;border-bottom:1px solid var(--border,#3a3a3a)">
+          <h1 style="font-size:15px;font-weight:700;color:var(--gold,#FFD700);line-height:1.2">SpinePay Pro</h1>
+          <p style="font-size:11px;color:var(--text-muted,#888);margin-top:2px">Walden Bailey Chiropractic</p>
+        </div>
+        <nav id="nav-links" style="flex:1;overflow-y:auto">${navHtml}</nav>
+        <div id="sidebar-footer" style="margin-top:auto;padding:12px 16px;border-top:1px solid var(--border,#3a3a3a)">
+          <div style="display:flex;align-items:center;gap:10px">
+            <div style="width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#d4af37,#a08020);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#000;flex-shrink:0">${initials}</div>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:13px;font-weight:600;color:#e0e0e0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${window.escHtml(user.full_name || user.username)}</div>
+              <div style="font-size:11px;color:var(--gold,#FFD700);text-transform:uppercase;letter-spacing:.5px">${user.role}</div>
             </div>
-          </div>`;
-      }
+          </div>
+        </div>`;
+    }
 
-      // ── Build full topbar ────────────────────────────────────────────
-      const topbarEl = document.getElementById('topbar');
-      if (topbarEl) {
-        const pageTitle = (document.title || 'SpinePay Pro').replace(/ [—–-].*$/, '').trim();
-        topbarEl.innerHTML = `
-          <h2 style="font-size:16px;font-weight:600;color:var(--gold,#FFD700);flex:1">${window.escHtml(pageTitle)}</h2>
-          <span class="clock" id="clock" style="font-size:13px;color:var(--text-muted,#888);font-variant-numeric:tabular-nums"></span>
-          <span class="user-badge" style="background:var(--bg3,#2e2e2e);border:1px solid var(--border,#3a3a3a);padding:4px 10px;border-radius:20px;font-size:12px;color:var(--gold,#FFD700)">${window.escHtml(user.full_name || user.username)}</span>
-          <button class="btn-logout" id="logout-btn" style="background:none;border:1px solid var(--border,#3a3a3a);color:var(--text-muted,#888);padding:5px 10px;border-radius:6px;cursor:pointer;font-size:12px">Logout</button>`;
-      }
+    // ── Build full topbar ────────────────────────────────────────────
+    const topbarEl = document.getElementById('topbar');
+    if (topbarEl) {
+      const pageTitle = (document.title || 'SpinePay Pro').replace(/ [—–-].*$/, '').trim();
+      topbarEl.innerHTML = `
+        <h2 style="font-size:16px;font-weight:600;color:var(--gold,#FFD700);flex:1">${window.escHtml(pageTitle)}</h2>
+        <span class="clock" id="clock" style="font-size:13px;color:var(--text-muted,#888);font-variant-numeric:tabular-nums"></span>
+        <span class="user-badge" style="background:var(--bg3,#2e2e2e);border:1px solid var(--border,#3a3a3a);padding:4px 10px;border-radius:20px;font-size:12px;color:var(--gold,#FFD700)">${window.escHtml(user.full_name || user.username)}</span>
+        <button class="btn-logout" id="logout-btn" style="background:none;border:1px solid var(--border,#3a3a3a);color:var(--text-muted,#888);padding:5px 10px;border-radius:6px;cursor:pointer;font-size:12px">Logout</button>`;
+    }
 
-      // ── Clock ────────────────────────────────────────────────────────
-      function tick() {
-        const el = document.getElementById('clock');
-        if (el) el.textContent = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-      }
-      tick();
-      setInterval(tick, 1000);
+    // ── Clock ────────────────────────────────────────────────────────
+    function tick() {
+      const el = document.getElementById('clock');
+      if (el) el.textContent = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    }
+    tick();
+    setInterval(tick, 1000);
 
-      // ── Logout button ────────────────────────────────────────────────
-      const logoutBtn = document.getElementById('logout-btn');
-      if (logoutBtn) {
-        logoutBtn.onclick = async function () {
-          await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' }).catch(() => {});
-          window.location.href = '/index.html';
-        };
-      }
-
-    } catch (err) {
-      console.error('[Layout] initLayout error:', err);
-      if (err.message && (err.message.includes('401') || err.message.includes('auth') || err.message.includes('authenticated'))) {
+    // ── Logout button ────────────────────────────────────────────────
+    const logoutBtn = document.getElementById('logout-btn');
+    if (logoutBtn) {
+      logoutBtn.onclick = async function () {
+        await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' }).catch(() => {});
         window.location.href = '/index.html';
-        return;
-      }
-    } finally {
-      // Always reveal the page — even on error, so it's never permanently blank
-      document.body.classList.add('layout-ready');
+      };
     }
   }
 

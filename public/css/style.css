@@ -22,13 +22,12 @@
 html, body { height: 100%; }
 body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); font-size: 14px; }
 
-/* Prevent flash of unstyled layout — fades in after layout.js finishes auth + nav render */
-.main-content {
-  opacity: 0;
-  transition: opacity 0.15s ease;
-}
-body.layout-ready .main-content {
-  opacity: 1;
+/* Sidebar placeholder while layout.js builds nav */
+#sidebar:empty {
+  width: 220px;
+  background: var(--bg2);
+  border-right: 1px solid var(--border);
+  flex-shrink: 0;
 }
 
 a { color: var(--gold); text-decoration: none; }

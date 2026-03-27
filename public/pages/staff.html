@@ -53,7 +53,7 @@
     </div>
   </div>
 </div>
-<script src="/js/app.js"></script>
+<script src="/js/layout.js"></script>
 <script>
 let staffList=[], resetId=null;
 async function loadStaff(){
@@ -71,6 +71,7 @@ async function loadStaff(){
     <td><div class="actions">
       <button class="btn btn-sm btn-outline" onclick="openReset(${s.id})">Reset PW</button>
       <button class="btn btn-sm ${s.active?'btn-danger':'btn-outline'}" onclick="toggleActive(${s.id},${!s.active})">${s.active?'Deactivate':'Activate'}</button>
+      <button class="btn btn-sm btn-danger" onclick="deleteStaff(${s.id},'${escHtml(s.first_name+' '+s.last_name)}')" style="margin-left:4px">Delete</button>
     </div></td>
   </tr>`).join('');
 }
@@ -86,7 +87,12 @@ async function doReset(){
   if(pw.length<8){document.getElementById('reset-alert').innerHTML='<div class="alert alert-error">Min 8 characters</div>';return;}
   try{await POST('/api/staff/'+resetId+'/reset-password',{newPassword:pw});closeModal('reset-modal');showAlert('Password reset. Staff will be prompted to change it.','success');}catch(e){document.getElementById('reset-alert').innerHTML='<div class="alert alert-error">'+e.message+'</div>';}
 }
-async function toggleActive(id,active){await PATCH('/api/staff/'+id+'/active',{active}).catch(e=>showAlert(e.message));loadStaff();}
+async function toggleActive(id,active){await PATCH('/api/staff/'+id+'/active',{active}).catch(e=>showAlert(e.message,'error'));loadStaff();}
+async function deleteStaff(id,name){
+  if(!confirm('Permanently delete '+name+'? This cannot be undone.'))return;
+  try{await DEL('/api/staff/'+id);showAlert(name+' has been deleted','success');loadStaff();}
+  catch(e){showAlert(e.message,'error');}
+}
 (async()=>{await requireLogin();loadStaff();})();
 </script>
 </body>

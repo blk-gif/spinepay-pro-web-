@@ -83,6 +83,29 @@ router.post('/:id/reset-password', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+router.delete('/:id', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (id === req.session.staff.id) {
+      return res.status(400).json({ error: 'You cannot delete your own account' });
+    }
+    await pool.query('DELETE FROM staff_hipaa WHERE staff_id = $1', [id]);
+    await pool.query('DELETE FROM staff_login_history WHERE staff_id = $1', [id]);
+    await pool.query(
+      `DELETE FROM session WHERE (sess::jsonb->'staff'->>'id')::int = $1`,
+      [id]
+    );
+    const { rows } = await pool.query('DELETE FROM staff WHERE id = $1 RETURNING username', [id]);
+    if (!rows[0]) return res.status(404).json({ error: 'Staff member not found' });
+    console.log('[Staff] Deleted:', rows[0].username);
+    await auditLog(req, 'DELETE', 'staff', id);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[Staff] Delete error:', err.message);
+    res.status(500).json({ error: 'Failed to delete staff member' });
+  }
+});
+
 router.put('/:id/deactivate', async (req, res) => {
   try {
     await pool.query('UPDATE staff SET active = FALSE WHERE id = $1', [req.params.id]);

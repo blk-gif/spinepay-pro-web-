@@ -145,17 +145,4 @@ router.post('/hipaa-sign', requireAuth, async (req, res) => {
   }
 });
 
-// GET /api/auth/debug-staff/:username  — TEMPORARY, remove after verifying fix
-router.get('/debug-staff/:username', async (req, res) => {
-  try {
-    const result = await pool.query(
-      'SELECT id, username, role, temp_password, hipaa_signed, active FROM staff WHERE username = $1',
-      [req.params.username]
-    );
-    res.json(result.rows[0] || { error: 'Not found' });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
 module.exports = router;

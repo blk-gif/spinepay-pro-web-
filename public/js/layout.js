@@ -11,6 +11,7 @@
     { section: 'MAIN' },
     { label: 'Dashboard',        href: '/dashboard',      icon: '📊', adminOnly: false },
     { label: 'Patients',         href: '/patients',       icon: '👥', adminOnly: false },
+    { label: 'Documents',        href: '/documents',      icon: '📁', adminOnly: false },
     { label: 'Scheduling',       href: '/scheduling',     icon: '📅', adminOnly: false },
     { section: 'CLINICAL' },
     { label: 'SOAP Notes',       href: '/soap-notes',     icon: '📋', adminOnly: false },

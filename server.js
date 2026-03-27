@@ -96,6 +96,10 @@ app.use('/api/timeclock',     requireAuth,  require('./routes/timeclock'));
 
 // ── Reports ──────────────────────────────────────────────────────────────────
 app.use('/api/reports',       requireAuth,  require('./routes/reports'));
+app.use('/api/documents',    requireAuth,  require('./routes/documents'));
+
+// Serve local document uploads (S3 fallback)
+app.use('/uploads', requireAuth, express.static(path.join(__dirname, 'uploads')));
 
 app.use((req, res, next) => {
   if (req.method !== 'GET') return next();

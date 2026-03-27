@@ -302,6 +302,29 @@ async function runMigrations() {
         created_at   TIMESTAMPTZ DEFAULT NOW()
       );
 
+      CREATE TABLE IF NOT EXISTS documents (
+        id             SERIAL PRIMARY KEY,
+        patient_id     INTEGER REFERENCES patients(id),
+        patient_name   TEXT,
+        document_type  TEXT NOT NULL,
+        file_name      TEXT NOT NULL,
+        file_size      INTEGER,
+        mime_type      TEXT,
+        s3_key         TEXT NOT NULL,
+        s3_bucket      TEXT,
+        uploaded_by    INTEGER REFERENCES staff(id),
+        uploaded_by_name TEXT,
+        notes          TEXT,
+        retention_date DATE,
+        deleted        BOOLEAN DEFAULT false,
+        deleted_at     TIMESTAMP,
+        deleted_by     INTEGER,
+        created_at     TIMESTAMP DEFAULT NOW()
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_documents_patient ON documents(patient_id);
+      CREATE INDEX IF NOT EXISTS idx_documents_type ON documents(document_type);
+
       CREATE TABLE IF NOT EXISTS audit_log (
         id          SERIAL PRIMARY KEY,
         staff_id    INTEGER,

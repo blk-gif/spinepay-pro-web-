@@ -4,6 +4,21 @@
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Patients — SpinePay Pro</title>
   <link rel="stylesheet" href="/css/style.css">
+  <style>
+    .pt-tabs { display:flex; gap:0; border-bottom:1px solid var(--border,#333); margin-bottom:16px; }
+    .pt-tab  { background:none; border:none; padding:10px 18px; color:var(--text-muted,#888); cursor:pointer; font-size:13px; border-bottom:2px solid transparent; margin-bottom:-1px; }
+    .pt-tab.active { color:var(--gold,#FFD700); border-bottom-color:var(--gold,#FFD700); font-weight:600; }
+    .pt-panel { display:none; }
+    .pt-panel.active { display:block; }
+    .doc-icon { font-size:18px; }
+    .drop-zone { border:2px dashed var(--border,#444); border-radius:8px; padding:28px; text-align:center; cursor:pointer; transition:border-color .2s,background .2s; color:var(--text-muted,#888); margin-bottom:12px; }
+    .drop-zone.drag-over { border-color:var(--gold,#FFD700); background:rgba(255,215,0,.06); color:var(--gold,#FFD700); }
+    .drop-zone input[type=file] { display:none; }
+    .progress-wrap { display:none; margin-top:8px; }
+    .progress-bar-bg { background:var(--border,#333); border-radius:4px; height:6px; overflow:hidden; }
+    .progress-bar-fill { background:var(--gold,#FFD700); height:6px; width:0%; transition:width .2s; }
+    .retention-warn { color:#f39c12; font-size:11px; }
+  </style>
 </head>
 <body>
 <div id="app">
@@ -68,9 +83,105 @@
   </div>
 </div>
 
+<!-- Patient Detail Modal (with tabs) -->
+<div class="modal-overlay hidden" id="detail-modal">
+  <div class="modal" style="max-width:720px">
+    <div class="modal-header">
+      <span class="modal-title" id="detail-title">Patient</span>
+      <button class="modal-close" onclick="closeModal('detail-modal')">×</button>
+    </div>
+    <div class="pt-tabs">
+      <button class="pt-tab active" onclick="switchTab('info')">Info</button>
+      <button class="pt-tab" onclick="switchTab('docs')">📁 Documents</button>
+    </div>
+    <!-- Info Tab -->
+    <div class="pt-panel active" id="pt-panel-info">
+      <div id="detail-info-body" style="min-height:80px;color:var(--text-muted,#888)">Loading…</div>
+    </div>
+    <!-- Documents Tab -->
+    <div class="pt-panel" id="pt-panel-docs">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <span style="font-size:13px;color:var(--text-muted,#888)" id="pt-doc-count"></span>
+        <button class="btn btn-primary btn-sm" onclick="openPatientUpload()">+ Upload</button>
+      </div>
+      <div class="table-wrap" style="max-height:320px;overflow-y:auto">
+        <table>
+          <thead><tr><th style="width:32px"></th><th>File</th><th>Type</th><th>Date</th><th>Size</th><th>Actions</th></tr></thead>
+          <tbody id="pt-docs-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Patient Upload Modal -->
+<div class="modal-overlay hidden" id="pt-upload-modal">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-header">
+      <span class="modal-title">Upload Document</span>
+      <button class="modal-close" onclick="closeModal('pt-upload-modal');openModal('detail-modal')">×</button>
+    </div>
+    <div id="pt-upload-alert"></div>
+    <div class="form-group">
+      <label>Document Type *</label>
+      <select id="pt-up-type" style="width:100%;background:var(--bg2,#1e1e1e);border:1px solid var(--border,#333);border-radius:6px;padding:9px 12px;color:var(--text,#e0e0e0);font-family:inherit;font-size:14px">
+        <option value="">— Select Type —</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>File *</label>
+      <div class="drop-zone" id="pt-drop-zone" onclick="document.getElementById('pt-file-input').click()">
+        <input type="file" id="pt-file-input" accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.doc,.docx" onchange="ptHandleFile(this.files[0])">
+        <div id="pt-drop-text">
+          <div style="font-size:26px;margin-bottom:6px">📁</div>
+          <div>Click to browse or drag &amp; drop</div>
+          <div style="font-size:11px;margin-top:4px">PDF, Images, Word — max 50 MB</div>
+        </div>
+      </div>
+      <div class="progress-wrap" id="pt-progress-wrap">
+        <div class="progress-bar-bg"><div class="progress-bar-fill" id="pt-progress-bar"></div></div>
+        <div id="pt-progress-label" style="font-size:11px;color:var(--text-muted,#888);margin-top:4px">Uploading…</div>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Notes</label>
+      <textarea id="pt-up-notes" style="min-height:56px"></textarea>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('pt-upload-modal');openModal('detail-modal')">Cancel</button>
+      <button class="btn btn-primary" id="pt-upload-btn" onclick="submitPatientUpload()">Upload</button>
+    </div>
+  </div>
+</div>
+
 <script src="/js/layout.js"></script>
 <script>
 let patients = [], editId = null;
+let detailPatientId = null, detailPatientName = '';
+let ptSelectedFile = null, ptDocTypes = [], currentUser = null;
+
+const DOC_ICONS = {
+  'application/pdf':'📄','image/jpeg':'🖼️','image/png':'🖼️','image/gif':'🖼️','image/webp':'🖼️',
+  'application/msword':'📝','application/vnd.openxmlformats-officedocument.wordprocessingml.document':'📝',
+};
+function docIcon(m) { return DOC_ICONS[m]||'📎'; }
+function fmtBytes(b) {
+  if (!b) return '—';
+  if (b < 1024) return b+' B';
+  if (b < 1024*1024) return (b/1024).toFixed(1)+' KB';
+  return (b/(1024*1024)).toFixed(1)+' MB';
+}
+function fmtDate(d) {
+  if (!d) return '—';
+  return new Date(String(d).split('T')[0]+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+}
+function retentionLabel(dateStr) {
+  if (!dateStr) return '—';
+  const diff = (new Date(dateStr)-new Date())/(1000*60*60*24);
+  if (diff < 0)  return `<span class="retention-warn">⚠️ Expired</span>`;
+  if (diff < 30) return `<span class="retention-warn">⚠️ ${fmtDate(dateStr)}</span>`;
+  return fmtDate(dateStr);
+}
 
 async function loadPatients() {
   patients = await GET('/api/patients').catch(() => []);
@@ -89,6 +200,7 @@ function renderTable(list) {
     <td>${statusBadge(p.status)}</td>
     <td><div class="actions">
       <button class="btn btn-sm btn-outline" onclick="editPatient(${p.id})">Edit</button>
+      <button class="btn btn-sm btn-outline" onclick="openDetail(${p.id})">📁 Docs</button>
     </div></td>
   </tr>`).join('');
 }
@@ -98,7 +210,7 @@ function searchPatients(q) {
   clearTimeout(searchTimer);
   searchTimer = setTimeout(async () => {
     if (q.length < 2) { renderTable(patients); return; }
-    const res = await GET('/api/patients?search=' + encodeURIComponent(q)).catch(() => []);
+    const res = await GET('/api/patients?search='+encodeURIComponent(q)).catch(() => []);
     renderTable(res);
   }, 300);
 }
@@ -147,14 +259,160 @@ async function savePatient() {
   };
   if (!data.first_name || !data.last_name) { document.getElementById('modal-alert').innerHTML = '<div class="alert alert-error">First and last name required</div>'; return; }
   try {
-    if (editId) await PUT('/api/patients/' + editId, data);
+    if (editId) await PUT('/api/patients/'+editId, data);
     else await POST('/api/patients', data);
     closeModal('patient-modal');
     loadPatients();
-  } catch (err) { document.getElementById('modal-alert').innerHTML = '<div class="alert alert-error">' + err.message + '</div>'; }
+  } catch (err) { document.getElementById('modal-alert').innerHTML = '<div class="alert alert-error">'+err.message+'</div>'; }
 }
 
-(async () => { await requireLogin(); loadPatients(); })();
+// ── Patient Detail / Docs Tab ──────────────────────────────────────────────
+
+function switchTab(tab) {
+  document.querySelectorAll('.pt-tab').forEach((b,i) => b.classList.toggle('active', ['info','docs'][i]===tab));
+  document.getElementById('pt-panel-info').classList.toggle('active', tab==='info');
+  document.getElementById('pt-panel-docs').classList.toggle('active', tab==='docs');
+}
+
+async function openDetail(id) {
+  const p = patients.find(x => x.id === id);
+  if (!p) return;
+  detailPatientId = id;
+  detailPatientName = p.first_name+' '+p.last_name;
+  document.getElementById('detail-title').textContent = detailPatientName;
+  switchTab('info');
+  document.getElementById('detail-info-body').innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 16px;font-size:13px">
+      <div><span style="color:var(--text-muted)">DOB:</span> ${fmtDate(p.dob)}</div>
+      <div><span style="color:var(--text-muted)">Gender:</span> ${escHtml(p.gender||'—')}</div>
+      <div><span style="color:var(--text-muted)">Phone:</span> ${escHtml(p.phone||'—')}</div>
+      <div><span style="color:var(--text-muted)">Email:</span> ${escHtml(p.email||'—')}</div>
+      <div><span style="color:var(--text-muted)">Address:</span> ${escHtml([p.address,p.city,p.state,p.zip].filter(Boolean).join(', ')||'—')}</div>
+      <div><span style="color:var(--text-muted)">Insurance:</span> ${escHtml(p.insurance_name||'—')}</div>
+      <div><span style="color:var(--text-muted)">Insurance ID:</span> ${escHtml(p.insurance_id||'—')}</div>
+      <div><span style="color:var(--text-muted)">Status:</span> ${statusBadge(p.status)}</div>
+    </div>
+    ${p.notes ? `<div style="margin-top:12px;font-size:13px;color:var(--text-muted)">Notes: ${escHtml(p.notes)}</div>` : ''}
+  `;
+  openModal('detail-modal');
+  loadPatientDocs();
+}
+
+async function loadPatientDocs() {
+  const docs = await GET(`/api/documents/patient/${detailPatientId}`).catch(() => []);
+  document.getElementById('pt-doc-count').textContent = `${docs.length} document${docs.length===1?'':'s'}`;
+  const tb = document.getElementById('pt-docs-tbody');
+  const isAdmin = currentUser && currentUser.role === 'admin';
+  if (!docs.length) {
+    tb.innerHTML = '<tr><td colspan="6"><div class="empty-state" style="padding:16px"><p>No documents yet</p></div></td></tr>';
+    return;
+  }
+  tb.innerHTML = docs.map(d => `<tr>
+    <td class="doc-icon">${docIcon(d.mime_type)}</td>
+    <td><strong>${escHtml(d.file_name)}</strong><br><span style="font-size:11px;color:var(--text-muted)">${fmtDate(d.created_at)}</span></td>
+    <td><span class="badge badge-blue" style="font-size:11px">${escHtml(d.document_type)}</span></td>
+    <td>${fmtDate(d.created_at)}</td>
+    <td style="font-size:12px;color:var(--text-muted)">${fmtBytes(d.file_size)}</td>
+    <td><div class="actions">
+      <button class="btn btn-sm btn-outline" onclick="ptViewDoc(${d.id})">View</button>
+      ${isAdmin ? `<button class="btn btn-sm btn-danger" onclick="ptDeleteDoc(${d.id})">Del</button>` : ''}
+    </div></td>
+  </tr>`).join('');
+}
+
+async function ptViewDoc(id) {
+  try { const { url } = await GET(`/api/documents/${id}/view`); window.open(url,'_blank'); }
+  catch (err) { showAlert(err.message,'error'); }
+}
+
+async function ptDeleteDoc(id) {
+  if (!confirm('Delete this document? This cannot be undone.')) return;
+  try { await DEL(`/api/documents/${id}`); loadPatientDocs(); showAlert('Deleted','success'); }
+  catch (err) { showAlert(err.message,'error'); }
+}
+
+async function openPatientUpload() {
+  if (!ptDocTypes.length) {
+    ptDocTypes = await GET('/api/documents/types').catch(() => []);
+    const sel = document.getElementById('pt-up-type');
+    sel.innerHTML = '<option value="">— Select Type —</option>' +
+      ptDocTypes.map(t => `<option value="${escHtml(t)}">${escHtml(t)}</option>`).join('');
+  }
+  ptSelectedFile = null;
+  document.getElementById('pt-file-input').value = '';
+  document.getElementById('pt-up-type').value = '';
+  document.getElementById('pt-up-notes').value = '';
+  document.getElementById('pt-upload-alert').innerHTML = '';
+  document.getElementById('pt-drop-text').innerHTML =
+    '<div style="font-size:26px;margin-bottom:6px">📁</div><div>Click to browse or drag &amp; drop</div><div style="font-size:11px;margin-top:4px">PDF, Images, Word — max 50 MB</div>';
+  document.getElementById('pt-progress-wrap').style.display = 'none';
+  closeModal('detail-modal');
+  openModal('pt-upload-modal');
+}
+
+function ptHandleFile(file) {
+  if (!file) return;
+  ptSelectedFile = file;
+  document.getElementById('pt-drop-text').innerHTML =
+    `<div style="font-size:20px;margin-bottom:6px">✅</div>` +
+    `<div style="font-weight:600;color:var(--gold,#FFD700)">${escHtml(file.name)}</div>` +
+    `<div style="font-size:11px;margin-top:4px">${fmtBytes(file.size)}</div>`;
+}
+
+const ptDz = document.getElementById('pt-drop-zone');
+ptDz.addEventListener('dragover',  e => { e.preventDefault(); ptDz.classList.add('drag-over'); });
+ptDz.addEventListener('dragleave', () => ptDz.classList.remove('drag-over'));
+ptDz.addEventListener('drop', e => { e.preventDefault(); ptDz.classList.remove('drag-over'); if (e.dataTransfer.files[0]) ptHandleFile(e.dataTransfer.files[0]); });
+
+async function submitPatientUpload() {
+  const document_type = document.getElementById('pt-up-type').value;
+  const notes = document.getElementById('pt-up-notes').value.trim();
+  const alertEl = document.getElementById('pt-upload-alert');
+  if (!ptSelectedFile) { alertEl.innerHTML = '<div class="alert alert-error">Please select a file</div>'; return; }
+  if (!document_type)  { alertEl.innerHTML = '<div class="alert alert-error">Please select a document type</div>'; return; }
+
+  const formData = new FormData();
+  formData.append('file', ptSelectedFile);
+  formData.append('document_type', document_type);
+  formData.append('patient_id', String(detailPatientId));
+  if (notes) formData.append('notes', notes);
+
+  const btn = document.getElementById('pt-upload-btn');
+  btn.disabled = true; btn.textContent = 'Uploading…';
+  document.getElementById('pt-progress-wrap').style.display = 'block';
+
+  try {
+    await new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', '/api/documents/upload');
+      xhr.withCredentials = true;
+      xhr.upload.onprogress = e => {
+        if (e.lengthComputable) {
+          const pct = Math.round(e.loaded/e.total*100);
+          document.getElementById('pt-progress-bar').style.width = pct+'%';
+          document.getElementById('pt-progress-label').textContent = `Uploading… ${pct}%`;
+        }
+      };
+      xhr.onload = () => xhr.status < 300 ? resolve() : reject(new Error(JSON.parse(xhr.responseText).error||`HTTP ${xhr.status}`));
+      xhr.onerror = () => reject(new Error('Network error'));
+      xhr.send(formData);
+    });
+    closeModal('pt-upload-modal');
+    openModal('detail-modal');
+    switchTab('docs');
+    loadPatientDocs();
+    showAlert('Document uploaded','success');
+  } catch (err) {
+    alertEl.innerHTML = `<div class="alert alert-error">${escHtml(err.message)}</div>`;
+  } finally {
+    btn.disabled = false; btn.textContent = 'Upload';
+  }
+}
+
+(async () => {
+  currentUser = await requireLogin();
+  loadPatients();
+})();
 </script>
 </body>
 </html>

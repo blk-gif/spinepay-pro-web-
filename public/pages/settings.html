@@ -14,20 +14,20 @@
       <div id="alert-area"></div>
       <div class="card" style="max-width:600px">
         <div class="card-header"><span class="card-title">Practice Information</span></div>
-        <div class="form-group"><label>Practice Name</label><input id="s-name" type="text"></div>
+        <div class="form-group"><label>Practice Name</label><input id="s-name" type="text" autocomplete="off"></div>
         <div class="form-row">
-          <div class="form-group"><label>Address</label><input id="s-addr" type="text"></div>
-          <div class="form-group"><label>City</label><input id="s-city" type="text"></div>
+          <div class="form-group"><label>Address</label><input id="s-addr" type="text" autocomplete="off"></div>
+          <div class="form-group"><label>City</label><input id="s-city" type="text" autocomplete="off"></div>
         </div>
         <div class="form-row">
-          <div class="form-group"><label>State</label><input id="s-state" type="text" style="max-width:80px"></div>
-          <div class="form-group"><label>ZIP</label><input id="s-zip" type="text" style="max-width:100px"></div>
+          <div class="form-group"><label>State</label><input id="s-state" type="text" style="max-width:80px" autocomplete="off"></div>
+          <div class="form-group"><label>ZIP</label><input id="s-zip" type="text" style="max-width:100px" autocomplete="off"></div>
         </div>
         <div class="form-row">
-          <div class="form-group"><label>Phone</label><input id="s-phone" type="tel"></div>
-          <div class="form-group"><label>Email</label><input id="s-email" type="email"></div>
+          <div class="form-group"><label>Phone</label><input id="s-phone" type="tel" autocomplete="off"></div>
+          <div class="form-group"><label>Email</label><input id="s-email" type="email" autocomplete="off"></div>
         </div>
-        <div class="form-group"><label>Billing Provider Name</label><input id="s-billing" type="text"></div>
+        <div class="form-group"><label>Billing Provider Name</label><input id="s-billing" type="text" autocomplete="off"></div>
         <div style="margin-top:16px">
           <button class="btn btn-primary" onclick="saveSettings()">Save Settings</button>
         </div>
@@ -64,8 +64,8 @@
           <h3 style="color:#FFD700;margin-bottom:20px">Add Staff Member</h3>
           <div id="addStaffErr" style="display:none;background:rgba(231,76,60,.12);border:1px solid rgba(231,76,60,.4);color:#e74c3c;border-radius:6px;padding:9px 12px;font-size:13px;margin-bottom:14px"></div>
           <div class="form-row">
-            <div class="form-group"><label>First Name</label><input id="ns-first" type="text" /></div>
-            <div class="form-group"><label>Last Name</label><input id="ns-last" type="text" /></div>
+            <div class="form-group"><label>First Name</label><input id="ns-first" type="text" autocomplete="off" /></div>
+            <div class="form-group"><label>Last Name</label><input id="ns-last" type="text" autocomplete="off" /></div>
           </div>
           <div class="form-row">
             <div class="form-group"><label>Username</label><input id="ns-user" type="text" autocomplete="off" /></div>
@@ -77,11 +77,11 @@
               </select>
             </div>
           </div>
-          <div class="form-group"><label>Email (optional)</label><input id="ns-email" type="email" /></div>
+          <div class="form-group"><label>Email (optional)</label><input id="ns-email" type="email" autocomplete="off" /></div>
           <div class="form-group">
             <label>Temporary Password</label>
             <div style="display:flex;gap:8px;align-items:center">
-              <input id="ns-pass" type="text" readonly style="flex:1;background:#1a1a1a;border:1px solid #444;border-radius:6px;padding:9px 12px;color:#FFD700;font-family:monospace;font-size:14px" />
+              <input id="ns-pass" type="text" readonly autocomplete="new-password" style="flex:1;background:#1a1a1a;border:1px solid #444;border-radius:6px;padding:9px 12px;color:#FFD700;font-family:monospace;font-size:14px" />
               <button onclick="genPass()" style="padding:9px 14px;background:#333;border:1px solid #444;color:#ccc;border-radius:6px;cursor:pointer;white-space:nowrap">Regenerate</button>
               <button onclick="copyPass()" id="copyBtn" style="padding:9px 14px;background:#333;border:1px solid #444;color:#ccc;border-radius:6px;cursor:pointer">Copy</button>
             </div>

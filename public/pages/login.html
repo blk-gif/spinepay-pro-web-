@@ -98,16 +98,16 @@ document.getElementById('login-form').addEventListener('submit', async e => {
   const password = document.getElementById('password').value;
   try {
     const res = await fetch('/api/auth/login', {
-      method: 'POST', headers: {'Content-Type':'application/json'},
+      method: 'POST', credentials: 'include', headers: {'Content-Type':'application/json'},
       body: JSON.stringify({ username, password })
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Login failed');
-    staffSession = data.staff;
-    if (data.requiresOnboarding) {
-      showStep(data.staff.temp_password ? 'step-password' : 'step-hipaa');
+    staffSession = data.user;
+    if (data.redirect && data.redirect !== '/app.html') {
+      window.location.href = data.redirect;
     } else {
-      window.location.href = '/dashboard';
+      window.location.href = '/app.html';
     }
   } catch (err) {
     document.getElementById('alert-area').innerHTML = '<div class="alert alert-error">' + err.message + '</div>';
@@ -122,14 +122,12 @@ document.getElementById('pw-form').addEventListener('submit', async e => {
   if (np !== cp) { document.getElementById('alert-area').innerHTML = '<div class="alert alert-error">Passwords do not match</div>'; return; }
   try {
     const res = await fetch('/api/auth/change-password', {
-      method: 'POST', headers: {'Content-Type':'application/json'},
+      method: 'POST', credentials: 'include', headers: {'Content-Type':'application/json'},
       body: JSON.stringify({ newPassword: np })
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error);
-    staffSession.temp_password = false;
-    if (!staffSession.hipaa_signed) showStep('step-hipaa');
-    else { showStep('step-done'); completeDone(); }
+    window.location.href = data.redirect || '/hipaa.html';
   } catch (err) {
     document.getElementById('alert-area').innerHTML = '<div class="alert alert-error">' + err.message + '</div>';
   }
@@ -140,29 +138,24 @@ async function submitHipaa() {
   if (!sig) { document.getElementById('alert-area').innerHTML = '<div class="alert alert-error">Please type your full name to sign</div>'; return; }
   try {
     const res = await fetch('/api/auth/hipaa-sign', {
-      method: 'POST', headers: {'Content-Type':'application/json'},
+      method: 'POST', credentials: 'include', headers: {'Content-Type':'application/json'},
       body: JSON.stringify({ signature: sig })
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error);
-    showStep('step-done'); completeDone();
+    window.location.href = data.redirect || '/role-confirm.html';
   } catch (err) {
     document.getElementById('alert-area').innerHTML = '<div class="alert alert-error">' + err.message + '</div>';
   }
 }
 
-function completeDone() {
-  setTimeout(() => { document.getElementById('progress-bar').style.width = '100%'; }, 50);
-  setTimeout(() => { window.location.href = '/dashboard'; }, 2200);
-}
-
 // Redirect if already logged in
 (async () => {
   try {
-    const res = await fetch('/api/auth/me');
+    const res = await fetch('/api/auth/me', { credentials: 'include' });
     if (res.ok) {
-      const u = await res.json();
-      if (!u.temp_password && u.hipaa_signed) window.location.href = '/dashboard';
+      const data = await res.json();
+      if (data.user && !data.user.temp_password && data.user.hipaa_signed) window.location.href = '/app.html';
     }
   } catch {}
   const p = new URLSearchParams(window.location.search);

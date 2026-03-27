@@ -104,11 +104,7 @@ document.getElementById('login-form').addEventListener('submit', async e => {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Login failed');
     staffSession = data.user;
-    if (data.redirect && data.redirect !== '/app.html') {
-      window.location.href = data.redirect;
-    } else {
-      window.location.href = '/app.html';
-    }
+    window.location.href = data.redirect || '/dashboard';
   } catch (err) {
     document.getElementById('alert-area').innerHTML = '<div class="alert alert-error">' + err.message + '</div>';
     btn.disabled = false; btn.textContent = 'Sign In';
@@ -155,7 +151,7 @@ async function submitHipaa() {
     const res = await fetch('/api/auth/me', { credentials: 'include' });
     if (res.ok) {
       const data = await res.json();
-      if (data.user && !data.user.temp_password && data.user.hipaa_signed) window.location.href = '/app.html';
+      if (data.user && !data.user.temp_password && data.user.hipaa_signed) window.location.href = '/dashboard';
     }
   } catch {}
   const p = new URLSearchParams(window.location.search);

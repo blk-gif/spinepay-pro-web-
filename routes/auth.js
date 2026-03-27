@@ -52,7 +52,7 @@ router.post('/login', loginLimiter, async (req, res) => {
     };
     req.session.lastActivity = Date.now();
 
-    let redirect = '/app.html';
+    let redirect = '/dashboard';
     if (staff.temp_password) redirect = '/change-password.html';
     else if (!staff.hipaa_signed) redirect = '/hipaa.html';
 

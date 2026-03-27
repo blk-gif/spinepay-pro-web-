@@ -23,6 +23,9 @@ app.use(cors({ origin: process.env.ALLOWED_ORIGIN || true, credentials: true }))
 app.use(morgan('[:date[iso]] :method :url :status :response-time ms'));
 app.use(express.json({ limit: '10kb' }));
 app.use(express.urlencoded({ extended: false, limit: '10kb' }));
+// Redirect old SPA entry point to new standalone dashboard
+app.get('/app.html', (req, res) => res.redirect('/dashboard'));
+
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.use(session({

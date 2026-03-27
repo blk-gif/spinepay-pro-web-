@@ -104,10 +104,13 @@ app.use('/uploads', requireAuth, express.static(path.join(__dirname, 'uploads'))
 app.use((req, res, next) => {
   if (req.method !== 'GET') return next();
   if (req.path.startsWith('/api')) return res.status(404).json({ error: 'Not found' });
-  const pageName = req.path === '/' ? 'login' : req.path.replace(/^\//, '').split('/')[0];
-  const filePath = path.join(__dirname, 'public', 'pages', `${pageName}.html`);
+  // Handle /settings, /settings.html, and /pages/settings.html all the same way
+  let page = req.path.replace(/\.html$/, '').replace(/^\//, '');
+  if (page.startsWith('pages/')) page = page.replace('pages/', '');
+  if (!page || page === '') page = 'login';
+  const filePath = path.join(__dirname, 'public', 'pages', `${page}.html`);
   if (fs.existsSync(filePath)) return res.sendFile(filePath);
-  res.sendFile(path.join(__dirname, 'public', 'pages', 'dashboard.html'));
+  res.sendFile(path.join(__dirname, 'public', 'pages', 'login.html'));
 });
 
 app.use((err, req, res, next) => {

@@ -2,48 +2,79 @@
 
 const cron = require('node-cron');
 const { PutObjectCommand, ListObjectsV2Command, DeleteObjectCommand } = require('@aws-sdk/client-s3');
-const { exec } = require('child_process');
-const { promisify } = require('util');
-const execAsync = promisify(exec);
 const { pool } = require('../db/pool');
 const { s3Client, BUCKET_NAME } = require('../config/s3');
 
 const BACKUP_PREFIX = 'backups/postgresql/';
 
+const TABLES = [
+  'staff', 'patients', 'appointments', 'soap_notes',
+  'intake_forms', 'billing_claims', 'eob_records',
+  'pi_cases', 'waitlist', 'time_clock', 'reminder_templates',
+  'reminders', 'referrals', 'transportation', 'documents',
+  'audit_log', 'backup_log', 'settings', 'staff_hipaa',
+  'staff_login_history', 'hcfa_forms',
+];
+
+async function exportDatabaseToSQL() {
+  let sql = `-- SpinePay Pro Database Backup\n`;
+  sql += `-- Generated: ${new Date().toISOString()}\n\n`;
+
+  for (const table of TABLES) {
+    try {
+      const result = await pool.query(`SELECT * FROM ${table}`);
+
+      if (result.rows.length === 0) {
+        sql += `-- Table ${table}: empty\n\n`;
+        continue;
+      }
+
+      const columns = Object.keys(result.rows[0]);
+      sql += `-- Table: ${table} (${result.rows.length} rows)\n`;
+      sql += `DELETE FROM ${table};\n`;
+
+      for (const row of result.rows) {
+        const values = columns.map(col => {
+          const val = row[col];
+          if (val === null || val === undefined) return 'NULL';
+          if (typeof val === 'boolean') return val ? 'TRUE' : 'FALSE';
+          if (typeof val === 'number') return val;
+          if (val instanceof Date) return `'${val.toISOString()}'`;
+          return `'${String(val).replace(/'/g, "''")}'`;
+        });
+        sql += `INSERT INTO ${table} (${columns.join(', ')}) VALUES (${values.join(', ')});\n`;
+      }
+
+      sql += '\n';
+    } catch (err) {
+      sql += `-- Table ${table}: skipped (${err.message})\n\n`;
+    }
+  }
+
+  return sql;
+}
+
 async function runBackup() {
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
   const filename = `spinepay-backup-${timestamp}.sql`;
 
-  console.log('[Backup] Starting PostgreSQL backup:', filename);
+  console.log('[Backup] Starting backup:', filename);
 
   try {
-    const dbUrl = process.env.DATABASE_URL;
-    if (!dbUrl) throw new Error('DATABASE_URL not set');
     if (!BUCKET_NAME) throw new Error('AWS_S3_BUCKET_NAME not set');
 
-    const { stdout, stderr } = await execAsync(
-      `pg_dump "${dbUrl}" --no-password --clean --if-exists --format=plain`,
-      { maxBuffer: 100 * 1024 * 1024 }
-    );
-
-    if (stderr && !stderr.includes('WARNING')) {
-      console.warn('[Backup] pg_dump stderr:', stderr);
-    }
+    const sqlContent = await exportDatabaseToSQL();
+    const buffer = Buffer.from(sqlContent, 'utf8');
 
     const s3Key = `${BACKUP_PREFIX}${filename}`;
-    const bodyBuffer = Buffer.from(stdout, 'utf8');
 
     await s3Client.send(new PutObjectCommand({
       Bucket: BUCKET_NAME,
       Key: s3Key,
-      Body: bodyBuffer,
+      Body: buffer,
       ContentType: 'text/plain',
       ServerSideEncryption: 'AES256',
-      Metadata: {
-        timestamp,
-        type: 'postgresql-backup',
-        database: 'spinepay_pro',
-      },
+      Metadata: { timestamp, type: 'postgresql-backup' },
     }));
 
     console.log('[Backup] Uploaded to S3:', s3Key);
@@ -51,13 +82,13 @@ async function runBackup() {
     await pool.query(
       `INSERT INTO backup_log (filename, s3_key, size_bytes, status, completed_at)
        VALUES ($1, $2, $3, 'success', NOW())`,
-      [filename, s3Key, bodyBuffer.length]
+      [filename, s3Key, buffer.length]
     );
 
     await cleanOldBackups();
 
     console.log('[Backup] Complete:', filename);
-    return { success: true, filename, s3Key };
+    return { success: true, filename, s3Key, size: buffer.length };
 
   } catch (err) {
     console.error('[Backup] Failed:', err.message);
@@ -73,7 +104,6 @@ async function runBackup() {
     }
 
     await sendBackupFailureAlert(err.message);
-
     return { success: false, error: err.message };
   }
 }

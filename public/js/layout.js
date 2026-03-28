@@ -207,7 +207,10 @@
       topbarEl.innerHTML = `
         <h2 style="font-size:16px;font-weight:600;color:var(--gold,#FFD700);flex:1">${window.escHtml(pageTitle)}</h2>
         <span class="clock" id="clock" style="font-size:13px;color:var(--text-muted,#888);font-variant-numeric:tabular-nums"></span>
-        <span class="user-badge" style="background:var(--bg3,#2e2e2e);border:1px solid var(--border,#3a3a3a);padding:4px 10px;border-radius:20px;font-size:12px;color:var(--gold,#FFD700)">${window.escHtml(user.full_name || user.username)}</span>
+        <div style="display:flex;align-items:center;gap:8px;background:var(--bg3,#2e2e2e);border:1px solid var(--border,#3a3a3a);padding:4px 12px 4px 6px;border-radius:20px;">
+          <div style="width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,#d4af37,#a08020);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#000;flex-shrink:0">${initials}</div>
+          <span style="font-size:12px;color:var(--gold,#FFD700)">${window.escHtml(user.full_name || user.username)}</span>
+        </div>
         <button class="btn-logout" id="logout-btn" style="background:none;border:1px solid var(--border,#3a3a3a);color:var(--text-muted,#888);padding:5px 10px;border-radius:6px;cursor:pointer;font-size:12px">Logout</button>`;
     }
 

@@ -3,6 +3,7 @@
 const { Router } = require('express');
 const { pool } = require('../db/pool');
 const { auditLog } = require('../middleware/audit');
+const { requireAuth, requireAdmin } = require('../middleware/auth');
 
 const router = Router();
 
@@ -92,7 +93,7 @@ router.put('/:id', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-router.patch('/:id/status', async (req, res) => {
+router.patch('/:id/status', requireAuth, async (req, res, next) => {
   try {
     const { status } = req.body;
     const { rows } = await pool.query(
@@ -101,22 +102,63 @@ router.patch('/:id/status', async (req, res) => {
     );
     if (!rows[0]) return res.status(404).json({ error: 'Not found' });
 
-    // Trigger review request 2 hours after completion
+    console.log('[Appointments] Status updated to:', status, 'for ID:', req.params.id);
+
+    // Trigger review when marked Completed
     if (status === 'Completed' && process.env.GOOGLE_REVIEW_URL) {
+      console.log('[Reviews] Appointment completed — scheduling review request');
+      const apptId = req.params.id;
+      const delay = process.env.NODE_ENV === 'production'
+        ? 2 * 60 * 60 * 1000  // 2 hours in production
+        : 60 * 1000;           // 1 minute in dev/testing
+
       setTimeout(async function triggerReview() {
         try {
           const { scheduleReviewForAppointment, sendReviewRequest } = require('../services/reviews');
-          const requestId = await scheduleReviewForAppointment(req.params.id);
-          if (requestId) await sendReviewRequest(requestId);
+          console.log('[Reviews] Firing review request for appointment:', apptId);
+          const requestId = await scheduleReviewForAppointment(apptId);
+          if (requestId) {
+            console.log('[Reviews] Sending review request ID:', requestId);
+            const sendResult = await sendReviewRequest(requestId);
+            console.log('[Reviews] Send result:', sendResult);
+          } else {
+            console.log('[Reviews] No request ID — already sent or no contact info');
+          }
         } catch (err) {
-          console.error('[Reviews] Delayed trigger error:', err.message);
+          console.error('[Reviews] Delayed send error:', err.message);
         }
-      }, 2 * 60 * 60 * 1000);
+      }, delay);
+
+      console.log('[Reviews] Review scheduled in', process.env.NODE_ENV === 'production' ? '2 hours' : '1 minute');
     }
 
     await auditLog(req, 'UPDATE_STATUS', 'appointment', req.params.id);
-    res.json(rows[0]);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+    res.json({ success: true, appointment: rows[0] });
+  } catch (err) { next(err); }
+});
+
+// POST /api/appointments/test-review/:id — TEMPORARY, remove after confirming SMS works
+router.post('/test-review/:id', requireAdmin, async (req, res) => {
+  try {
+    const { scheduleReviewForAppointment, sendReviewRequest } = require('../services/reviews');
+
+    await pool.query(
+      'UPDATE appointments SET status = $1, updated_at = NOW() WHERE id = $2',
+      ['Completed', req.params.id]
+    );
+
+    const requestId = await scheduleReviewForAppointment(req.params.id);
+    if (!requestId) {
+      return res.json({ success: false, error: 'Could not schedule — already sent or no patient contact info' });
+    }
+
+    const result = await sendReviewRequest(requestId);
+    console.log('[Reviews] Test send result:', result);
+    res.json({ success: true, result });
+  } catch (err) {
+    console.error('[Reviews] Test error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 router.delete('/:id', async (req, res) => {

@@ -158,6 +158,7 @@
 
     const isAdmin = user.role === 'admin';
     const currentPage = getCurrentPage();
+    const initials = (user.full_name || user.username || 'U').charAt(0).toUpperCase();
 
     // ── Build full sidebar ─────────────────────────────────────────
     const sidebarEl = document.getElementById('sidebar');
@@ -181,8 +182,6 @@
           onmouseout="this.style.background='${activeBg}'"
         >${item.icon}&nbsp;${item.label}</a>`;
       }
-
-      const initials = (user.full_name || user.username || 'U').charAt(0).toUpperCase();
       sidebarEl.innerHTML = `
         <div style="padding:18px 16px 14px;border-bottom:1px solid var(--border,#3a3a3a)">
           <h1 style="font-size:15px;font-weight:700;color:var(--gold,#FFD700);line-height:1.2">SpinePay Pro</h1>

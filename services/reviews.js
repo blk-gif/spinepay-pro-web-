@@ -7,6 +7,14 @@ const GOOGLE_REVIEW_URL = process.env.GOOGLE_REVIEW_URL;
 const TWILIO_FROM = process.env.TWILIO_PHONE_NUMBER || '+17164532864';
 const PRACTICE_NAME = 'Walden Bailey Chiropractic';
 
+function normalizePhone(phone) {
+  if (!phone) return null;
+  const digits = phone.replace(/\D/g, '');
+  if (digits.startsWith('1') && digits.length === 11) return `+${digits}`;
+  if (digits.length === 10) return `+1${digits}`;
+  return `+${digits}`;
+}
+
 function getTwilioClient() {
   if (!process.env.TWILIO_ACCOUNT_SID || !process.env.TWILIO_AUTH_TOKEN) {
     console.warn('[Reviews] Twilio not configured');
@@ -24,11 +32,13 @@ async function sendReviewRequest(reviewRequestId) {
   if (result.rows.length === 0) return { success: false, error: 'Not found' };
   const request = result.rows[0];
 
+  const phone = normalizePhone(request.patient_phone);
+
   // Check opt-out
-  if (request.patient_phone) {
+  if (phone) {
     const optOut = await pool.query(
       'SELECT id FROM review_opt_outs WHERE phone = $1',
-      [request.patient_phone.replace(/\D/g, '')]
+      [phone]
     );
     if (optOut.rows.length > 0) {
       await pool.query(
@@ -43,17 +53,17 @@ async function sendReviewRequest(reviewRequestId) {
   let emailSent = false;
 
   // Send SMS via Twilio
-  if (request.patient_phone) {
+  if (phone) {
     try {
       const client = getTwilioClient();
       if (client && GOOGLE_REVIEW_URL) {
         await client.messages.create({
           body: `Thank you for visiting ${PRACTICE_NAME}! We hope you're feeling better. If you have a moment, we'd love a Google review: ${GOOGLE_REVIEW_URL} Reply STOP to opt out.`,
           from: TWILIO_FROM,
-          to: request.patient_phone,
+          to: phone,
         });
         smsSent = true;
-        console.log('[Reviews] SMS sent to:', request.patient_phone);
+        console.log('[Reviews] SMS sent to:', phone);
       }
     } catch (err) {
       console.error('[Reviews] SMS error:', err.message);
@@ -128,7 +138,9 @@ async function scheduleReviewForAppointment(appointmentId) {
     if (result.rows.length === 0) return null;
     const appt = result.rows[0];
 
-    if (!appt.phone && !appt.email) return null;
+    const normalizedPhone = normalizePhone(appt.phone);
+
+    if (!normalizedPhone && !appt.email) return null;
 
     // Don't create a duplicate
     const existing = await pool.query(
@@ -145,10 +157,10 @@ async function scheduleReviewForAppointment(appointmentId) {
     `, [
       appt.patient_id,
       `${appt.first_name} ${appt.last_name}`,
-      appt.phone,
+      normalizedPhone,
       appt.email,
       appointmentId,
-      appt.phone ? 'SMS' : 'EMAIL',
+      normalizedPhone ? 'SMS' : 'EMAIL',
     ]);
 
     console.log('[Reviews] Scheduled request ID:', req.rows[0].id);
@@ -186,7 +198,7 @@ async function processCompletedAppointments() {
 
 async function handleOptOut(phone) {
   try {
-    const normalized = phone.replace(/\D/g, '');
+    const normalized = normalizePhone(phone) || phone.replace(/\D/g, '');
     await pool.query(
       'INSERT INTO review_opt_outs (phone) VALUES ($1) ON CONFLICT (phone) DO NOTHING',
       [normalized]

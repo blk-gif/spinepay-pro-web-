@@ -7,15 +7,29 @@ const pool = new Pool({
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
   max: 10,
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000,
+  connectionTimeoutMillis: 10000,
+  allowExitOnIdle: false,
 });
 
-pool.connect((err, client, release) => {
-  if (err) { console.error('[DB] Connection failed:', err.message); process.exit(1); }
-  release();
-  console.log('[DB] PostgreSQL connected');
-});
+async function connectWithRetry(retries = 5, delay = 3000) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const client = await pool.connect();
+      console.log('[DB] Connected to PostgreSQL');
+      client.release();
+      return true;
+    } catch (err) {
+      console.error(`[DB] Connection attempt ${i + 1}/${retries} failed:`, err.message);
+      if (i < retries - 1) {
+        console.log(`[DB] Retrying in ${delay / 1000}s...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+  }
+  console.error('[DB] All connection attempts failed');
+  return false;
+}
 
 const query = (text, params) => pool.query(text, params);
 
-module.exports = { pool, query };
+module.exports = { pool, query, connectWithRetry };

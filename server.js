@@ -11,7 +11,7 @@ const session    = require('express-session');
 const PgSession  = require('connect-pg-simple')(session);
 const morgan     = require('morgan');
 const bcrypt     = require('bcryptjs');
-const { pool }   = require('./db/pool');
+const { pool, connectWithRetry } = require('./db/pool');
 const runMigrations = require('./db/migrations');
 
 const app  = express();
@@ -125,8 +125,7 @@ app.use((err, req, res, next) => {
   res.status(status).json({ error: message });
 });
 
-async function start() {
-  await runMigrations();
+async function createDefaultAdmin() {
   const { rows } = await pool.query("SELECT id FROM staff WHERE role = 'Admin' LIMIT 1");
   if (rows.length === 0) {
     const hash = await bcrypt.hash('Admin1234!', 10);
@@ -136,6 +135,20 @@ async function start() {
     );
     console.log('[Setup] Default admin created — username: admin / password: Admin1234!');
   }
+}
+
+async function start() {
+  console.log('[Server] Starting...');
+
+  const connected = await connectWithRetry(5, 3000);
+  if (!connected) {
+    console.error('[Server] Could not connect to database after 5 attempts');
+    process.exit(1);
+  }
+
+  await runMigrations();
+  await createDefaultAdmin();
+
   app.listen(PORT, '0.0.0.0', () => {
     console.log('[Server] SpinePay Pro Web running on port ' + PORT);
     if (process.env.NODE_ENV === 'production') {

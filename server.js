@@ -99,7 +99,8 @@ app.use('/api/timeclock',     requireAuth,  require('./routes/timeclock'));
 
 // ── Reports ──────────────────────────────────────────────────────────────────
 app.use('/api/reports',       requireAuth,  require('./routes/reports'));
-app.use('/api/documents',    requireAuth,  require('./routes/documents'));
+app.use('/api/documents',     requireAuth,  require('./routes/documents'));
+app.use('/api/backup',        requireAdmin, require('./routes/backup'));
 
 // Serve local document uploads (S3 fallback)
 app.use('/uploads', requireAuth, express.static(path.join(__dirname, 'uploads')));
@@ -134,7 +135,13 @@ async function start() {
     );
     console.log('[Setup] Default admin created — username: admin / password: Admin1234!');
   }
-  app.listen(PORT, '0.0.0.0', () => console.log('[Server] SpinePay Pro Web running on port ' + PORT));
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log('[Server] SpinePay Pro Web running on port ' + PORT);
+    if (process.env.NODE_ENV === 'production') {
+      const { startBackupSchedule } = require('./services/backup');
+      startBackupSchedule();
+    }
+  });
 }
 
 start().catch(err => { console.error('[Fatal]', err.message); process.exit(1); });

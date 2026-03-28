@@ -28,6 +28,8 @@ services:
         sync: false
       - key: AWS_REGION
         value: us-east-2
+      - key: BACKUP_ALERT_EMAIL
+        value: drward@waldenbaileychiropratic.com
 
 databases:
   - name: spinepay-db

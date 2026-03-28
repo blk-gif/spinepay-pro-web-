@@ -47,13 +47,13 @@ https://github.com/blk-gif/spinepay-pro-web-
 - Staff management: add, deactivate, delete
 - Settings: practice info + staff accounts
 - Documents: S3 upload/view/download with 7-year retention
+- Automated daily PostgreSQL backup to S3 at 2AM ET, 7-year retention, admin UI in Settings
 - Shared layout.js sidebar on all pages — no flash
 - HIPAA audit log on all PHI access
 - Welcome email via SendGrid on staff creation
 
 ## Pending Features
 - Prompt 7b: Document admin panel (review, bulk delete, retention)
-- Prompt 8: 7-year PostgreSQL backup to S3
 - Prompt 9: Google Reviews automation
 - Prompt 10: Staff photo on website
 - Prompt 11: SendGrid domain authentication

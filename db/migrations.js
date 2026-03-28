@@ -343,6 +343,18 @@ async function runMigrations() {
         value      TEXT,
         updated_at TIMESTAMPTZ DEFAULT NOW()
       );
+
+      CREATE TABLE IF NOT EXISTS backup_log (
+        id            SERIAL PRIMARY KEY,
+        filename      TEXT NOT NULL,
+        s3_key        TEXT,
+        size_bytes    BIGINT DEFAULT 0,
+        status        TEXT DEFAULT 'success',
+        error_message TEXT,
+        completed_at  TIMESTAMPTZ DEFAULT NOW()
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_backup_log_completed ON backup_log(completed_at DESC);
     `);
 
     // ── Column additions for existing databases ───────────────────────────────

@@ -57,6 +57,61 @@
         </table>
       </div>
 
+      <!-- Backup & Recovery -->
+      <div class="card" style="max-width:900px;margin-top:24px">
+        <div class="card-header" style="display:flex;align-items:center;justify-content:space-between">
+          <span class="card-title">&#128190; Backup &amp; Recovery</span>
+          <button class="btn btn-primary" id="run-backup-btn" onclick="runManualBackup()">&#9654; Run Backup Now</button>
+        </div>
+
+        <!-- Status row -->
+        <div id="backup-status-row" style="display:flex;align-items:center;gap:16px;padding:14px 16px;background:var(--bg3);border-radius:8px;margin-bottom:16px">
+          <span id="backup-status-icon" style="font-size:28px">&#8987;</span>
+          <div style="flex:1">
+            <div id="backup-status-title" style="font-size:14px;font-weight:600;color:#e0e0e0">Loading backup status…</div>
+            <div id="backup-status-detail" style="font-size:12px;color:#888;margin-top:2px"></div>
+          </div>
+        </div>
+
+        <!-- Stats -->
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px">
+          <div style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:14px;text-align:center">
+            <div id="total-backups" style="font-size:24px;font-weight:700;color:var(--gold)">—</div>
+            <div style="font-size:11px;color:#888;margin-top:4px">Total Backups</div>
+          </div>
+          <div style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:14px;text-align:center">
+            <div id="last-backup-size" style="font-size:24px;font-weight:700;color:var(--gold)">—</div>
+            <div style="font-size:11px;color:#888;margin-top:4px">Last Backup Size</div>
+          </div>
+          <div style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:14px;text-align:center">
+            <div style="font-size:24px;font-weight:700;color:var(--gold)">7 Years</div>
+            <div style="font-size:11px;color:#888;margin-top:4px">Retention Period</div>
+          </div>
+          <div style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:14px;text-align:center">
+            <div style="font-size:24px;font-weight:700;color:var(--gold)">2:00 AM</div>
+            <div style="font-size:11px;color:#888;margin-top:4px">Daily Schedule (ET)</div>
+          </div>
+        </div>
+
+        <!-- History table -->
+        <div style="font-size:13px;font-weight:600;color:#aaa;margin-bottom:8px;text-transform:uppercase;letter-spacing:.04em">Recent Backups (Last 30)</div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Date &amp; Time</th>
+                <th>Filename</th>
+                <th>Size</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="backup-history-body">
+              <tr><td colspan="4" style="padding:16px;color:#666;text-align:center">Loading…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       <!-- Add Staff Modal -->
       <div id="addStaffModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;align-items:center;justify-content:center">
         <div style="background:#242424;border:1px solid #444;border-radius:12px;padding:32px;width:100%;max-width:480px;position:relative">
@@ -294,11 +349,94 @@ document.getElementById('addStaffModal').addEventListener('click', function(e) {
   if (e.target === this) closeAddStaff();
 });
 
+async function loadBackupStatus() {
+  try {
+    const [status, history] = await Promise.all([
+      GET('/api/backup/status'),
+      GET('/api/backup/history'),
+    ]);
+
+    const icon  = document.getElementById('backup-status-icon');
+    const title = document.getElementById('backup-status-title');
+    const detail = document.getElementById('backup-status-detail');
+
+    if (status.lastBackup) {
+      const lastDate   = new Date(status.lastBackup.completed_at);
+      const hoursSince = (Date.now() - lastDate) / (1000 * 60 * 60);
+      if (hoursSince < 25) {
+        icon.textContent  = '✅';
+        title.textContent = 'Backup Up to Date';
+        title.style.color = '#4caf7d';
+      } else {
+        icon.textContent  = '⚠️';
+        title.textContent = 'Backup Overdue';
+        title.style.color = '#FFD700';
+      }
+      detail.textContent = 'Last backup: ' + lastDate.toLocaleString();
+    } else {
+      icon.textContent  = '❌';
+      title.textContent = 'No Backups Found';
+      title.style.color = '#e05252';
+      detail.textContent = 'Click "Run Backup Now" to create the first backup';
+    }
+
+    document.getElementById('total-backups').textContent = status.totalBackups;
+    if (status.lastBackup && status.lastBackup.size_bytes) {
+      const kb = Math.round(status.lastBackup.size_bytes / 1024);
+      document.getElementById('last-backup-size').textContent =
+        kb > 1024 ? (kb / 1024).toFixed(1) + ' MB' : kb + ' KB';
+    }
+
+    const tbody = document.getElementById('backup-history-body');
+    if (!history.length) {
+      tbody.innerHTML = '<tr><td colspan="4" style="padding:16px;color:#666;text-align:center">No backups yet</td></tr>';
+    } else {
+      tbody.innerHTML = history.map(b => {
+        const kb      = b.size_bytes ? Math.round(b.size_bytes / 1024) : 0;
+        const sizeStr = kb > 1024 ? (kb / 1024).toFixed(1) + ' MB' : kb + ' KB';
+        const ok      = b.status === 'success';
+        return `<tr>
+          <td>${new Date(b.completed_at).toLocaleString()}</td>
+          <td style="font-family:monospace;font-size:11px">${window.escHtml(b.filename)}</td>
+          <td>${b.size_bytes ? sizeStr : '—'}</td>
+          <td>
+            <span class="badge ${ok ? 'badge-green' : 'badge-red'}">${ok ? '✓ Success' : '✗ Failed'}</span>
+            ${b.error_message ? '<div style="color:#e05252;font-size:11px;margin-top:2px">' + window.escHtml(b.error_message) + '</div>' : ''}
+          </td>
+        </tr>`;
+      }).join('');
+    }
+  } catch (err) {
+    console.error('[Backup] Status load error:', err);
+  }
+}
+
+async function runManualBackup() {
+  const btn = document.getElementById('run-backup-btn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Running…';
+  try {
+    const data = await POST('/api/backup/run', {});
+    if (data.success) {
+      showAlert('Backup completed successfully!', 'success');
+      loadBackupStatus();
+    } else {
+      showAlert('Backup failed: ' + data.error, 'error');
+    }
+  } catch (err) {
+    showAlert('Backup request failed: ' + err.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '▶ Run Backup Now';
+  }
+}
+
 (async () => {
   const user = await requireLogin();
   if (!user) return;
   loadSettings();
   loadStaff();
+  loadBackupStatus();
 })();
 
 </script>

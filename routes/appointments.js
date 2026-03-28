@@ -95,8 +95,27 @@ router.put('/:id', async (req, res) => {
 router.patch('/:id/status', async (req, res) => {
   try {
     const { status } = req.body;
-    await pool.query('UPDATE appointments SET status = $1 WHERE id = $2', [status, req.params.id]);
-    res.json({ success: true });
+    const { rows } = await pool.query(
+      'UPDATE appointments SET status = $1, updated_at = NOW() WHERE id = $2 RETURNING *',
+      [status, req.params.id]
+    );
+    if (!rows[0]) return res.status(404).json({ error: 'Not found' });
+
+    // Trigger review request 2 hours after completion
+    if (status === 'Completed' && process.env.GOOGLE_REVIEW_URL) {
+      setTimeout(async function triggerReview() {
+        try {
+          const { scheduleReviewForAppointment, sendReviewRequest } = require('../services/reviews');
+          const requestId = await scheduleReviewForAppointment(req.params.id);
+          if (requestId) await sendReviewRequest(requestId);
+        } catch (err) {
+          console.error('[Reviews] Delayed trigger error:', err.message);
+        }
+      }, 2 * 60 * 60 * 1000);
+    }
+
+    await auditLog(req, 'UPDATE_STATUS', 'appointment', req.params.id);
+    res.json(rows[0]);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

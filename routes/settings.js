@@ -2,6 +2,7 @@
 
 const { Router } = require('express');
 const { pool } = require('../db/pool');
+const { getReviewStats, sendReviewRequest } = require('../services/reviews');
 
 const router = Router();
 
@@ -24,6 +25,40 @@ router.put('/', async (req, res) => {
       );
     }
     res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── Google Reviews ────────────────────────────────────────────────────────────
+
+router.get('/review-stats', async (req, res) => {
+  try {
+    const stats = await getReviewStats();
+    res.json(stats);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.get('/review-history', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      'SELECT * FROM review_requests ORDER BY created_at DESC LIMIT 50'
+    );
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.post('/review-send/:patientId', async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT * FROM patients WHERE id = $1', [req.params.patientId]);
+    if (!rows[0]) return res.status(404).json({ error: 'Patient not found' });
+    const p = rows[0];
+
+    const req2 = await pool.query(`
+      INSERT INTO review_requests (patient_id, patient_name, patient_phone, patient_email, channel)
+      VALUES ($1, $2, $3, $4, $5) RETURNING id
+    `, [p.id, `${p.first_name} ${p.last_name}`, p.phone, p.email, p.phone ? 'SMS' : 'EMAIL']);
+
+    const result = await sendReviewRequest(req2.rows[0].id);
+    res.json(result);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

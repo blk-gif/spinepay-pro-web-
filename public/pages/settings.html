@@ -57,6 +57,56 @@
         </table>
       </div>
 
+      <!-- Google Reviews Automation -->
+      <div class="card" style="max-width:900px;margin-top:24px">
+        <div class="card-header">
+          <span class="card-title">&#11088; Google Reviews Automation</span>
+        </div>
+        <p style="color:#888;font-size:13px;margin-bottom:16px">
+          Review requests are sent automatically 2 hours after an appointment is marked
+          <strong style="color:var(--gold)">Completed</strong>.
+          Patients reply <strong style="color:var(--gold)">STOP</strong> to opt out.
+        </p>
+
+        <!-- Stats -->
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px">
+          <div style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:14px;text-align:center">
+            <div id="reviews-month" style="font-size:24px;font-weight:700;color:var(--gold)">—</div>
+            <div style="font-size:11px;color:#888;margin-top:4px">Sent This Month</div>
+          </div>
+          <div style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:14px;text-align:center">
+            <div id="reviews-total" style="font-size:24px;font-weight:700;color:var(--gold)">—</div>
+            <div style="font-size:11px;color:#888;margin-top:4px">Total Sent</div>
+          </div>
+          <div style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:14px;text-align:center">
+            <div id="reviews-opted-out" style="font-size:24px;font-weight:700;color:var(--gold)">—</div>
+            <div style="font-size:11px;color:#888;margin-top:4px">Opted Out</div>
+          </div>
+          <div style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:14px;text-align:center">
+            <div id="reviews-failed" style="font-size:24px;font-weight:700;color:var(--gold)">—</div>
+            <div style="font-size:11px;color:#888;margin-top:4px">Failed</div>
+          </div>
+        </div>
+
+        <!-- History -->
+        <div style="font-size:13px;font-weight:600;color:#aaa;margin-bottom:8px;text-transform:uppercase;letter-spacing:.04em">Recent Requests</div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Patient</th>
+                <th>Channel</th>
+                <th>Sent At</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="review-history-body">
+              <tr><td colspan="4" style="padding:16px;color:#666;text-align:center">Loading…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       <!-- Backup & Recovery -->
       <div class="card" style="max-width:900px;margin-top:24px">
         <div class="card-header" style="display:flex;align-items:center;justify-content:space-between">
@@ -349,6 +399,37 @@ document.getElementById('addStaffModal').addEventListener('click', function(e) {
   if (e.target === this) closeAddStaff();
 });
 
+async function loadReviewStats() {
+  try {
+    const [stats, history] = await Promise.all([
+      GET('/api/settings/review-stats'),
+      GET('/api/settings/review-history'),
+    ]);
+
+    document.getElementById('reviews-month').textContent     = stats.thisMonth;
+    document.getElementById('reviews-total').textContent     = stats.sent;
+    document.getElementById('reviews-opted-out').textContent = stats.optedOut;
+    document.getElementById('reviews-failed').textContent    = stats.failed;
+
+    const tbody = document.getElementById('review-history-body');
+    if (!history.length) {
+      tbody.innerHTML = '<tr><td colspan="4" style="padding:16px;color:#666;text-align:center">No review requests yet</td></tr>';
+    } else {
+      tbody.innerHTML = history.map(r => {
+        const ok = r.status === 'sent';
+        return `<tr>
+          <td>${window.escHtml(r.patient_name)}</td>
+          <td>${window.escHtml(r.channel)}</td>
+          <td>${r.sent_at ? new Date(r.sent_at).toLocaleString() : '—'}</td>
+          <td><span class="badge ${ok ? 'badge-green' : r.status === 'opted_out' ? 'badge-yellow' : 'badge-red'}">${window.escHtml(r.status)}</span></td>
+        </tr>`;
+      }).join('');
+    }
+  } catch (err) {
+    console.error('[Reviews] Stats load error:', err);
+  }
+}
+
 async function loadBackupStatus() {
   try {
     const [status, history] = await Promise.all([
@@ -436,6 +517,7 @@ async function runManualBackup() {
   if (!user) return;
   loadSettings();
   loadStaff();
+  loadReviewStats();
   loadBackupStatus();
 })();
 

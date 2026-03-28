@@ -30,6 +30,14 @@ services:
         value: us-east-2
       - key: BACKUP_ALERT_EMAIL
         value: drward@waldenbaileychiropratic.com
+      - key: GOOGLE_REVIEW_URL
+        value: https://share.google/kIg7xz7XOleM0bw0B
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_PHONE_NUMBER
+        value: "+17164532864"
 
 databases:
   - name: spinepay-db

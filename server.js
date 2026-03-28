@@ -101,6 +101,7 @@ app.use('/api/timeclock',     requireAuth,  require('./routes/timeclock'));
 app.use('/api/reports',       requireAuth,  require('./routes/reports'));
 app.use('/api/documents',     requireAuth,  require('./routes/documents'));
 app.use('/api/backup',        requireAdmin, require('./routes/backup'));
+app.use('/webhooks',                        require('./routes/webhooks'));
 
 // Serve local document uploads (S3 fallback)
 app.use('/uploads', requireAuth, express.static(path.join(__dirname, 'uploads')));
@@ -139,7 +140,9 @@ async function start() {
     console.log('[Server] SpinePay Pro Web running on port ' + PORT);
     if (process.env.NODE_ENV === 'production') {
       const { startBackupSchedule } = require('./services/backup');
+      const { startReviewSchedule } = require('./services/reviews');
       startBackupSchedule();
+      startReviewSchedule();
     }
   });
 }

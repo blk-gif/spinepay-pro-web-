@@ -355,6 +355,30 @@ async function runMigrations() {
       );
 
       CREATE INDEX IF NOT EXISTS idx_backup_log_completed ON backup_log(completed_at DESC);
+
+      CREATE TABLE IF NOT EXISTS review_requests (
+        id             SERIAL PRIMARY KEY,
+        patient_id     INTEGER REFERENCES patients(id),
+        patient_name   TEXT NOT NULL,
+        patient_phone  TEXT,
+        patient_email  TEXT,
+        appointment_id INTEGER REFERENCES appointments(id),
+        channel        TEXT DEFAULT 'SMS',
+        status         TEXT DEFAULT 'pending',
+        sent_at        TIMESTAMPTZ,
+        error_message  TEXT,
+        opted_out      BOOLEAN DEFAULT FALSE,
+        created_at     TIMESTAMPTZ DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS review_opt_outs (
+        id           SERIAL PRIMARY KEY,
+        phone        TEXT UNIQUE,
+        opted_out_at TIMESTAMPTZ DEFAULT NOW()
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_review_requests_patient ON review_requests(patient_id);
+      CREATE INDEX IF NOT EXISTS idx_review_requests_status  ON review_requests(status);
     `);
 
     // ── Column additions for existing databases ───────────────────────────────

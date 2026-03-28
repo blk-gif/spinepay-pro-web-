@@ -434,6 +434,32 @@ async function runMigrations() {
       ('48hr Email', 'email', 48, 'Appointment Reminder — Walden Bailey Chiropractic', 'Dear {{patient_name}},\n\nThis is a reminder of your appointment on {{date}} at {{time}}.\n\nWalden Bailey Chiropractic\n(716) 893-9200')
     ON CONFLICT (name, type, trigger_hours) DO NOTHING
   `).catch(err => console.error('[Migrations] Seed reminder_templates:', err.message));
+
+  // ── Add updated_at to tables that need it for review automation ──────────
+  const tablesNeedingUpdatedAt = ['appointments', 'patients', 'billing_claims', 'soap_notes'];
+  for (const table of tablesNeedingUpdatedAt) {
+    await pool.query(
+      `ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()`
+    ).catch(err => console.error(`[Migrations] updated_at on ${table}:`, err.message));
+  }
+
+  // ── Auto-update trigger on appointments.updated_at ────────────────────────
+  await pool.query(`
+    CREATE OR REPLACE FUNCTION update_updated_at_column()
+    RETURNS TRIGGER AS $$
+    BEGIN
+      NEW.updated_at = NOW();
+      RETURN NEW;
+    END;
+    $$ LANGUAGE 'plpgsql'
+  `).catch(err => console.error('[Migrations] updated_at trigger function:', err.message));
+
+  await pool.query(`
+    DROP TRIGGER IF EXISTS update_appointments_updated_at ON appointments;
+    CREATE TRIGGER update_appointments_updated_at
+      BEFORE UPDATE ON appointments
+      FOR EACH ROW EXECUTE FUNCTION update_updated_at_column()
+  `).catch(err => console.error('[Migrations] updated_at trigger:', err.message));
 }
 
 module.exports = runMigrations;

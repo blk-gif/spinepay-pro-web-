@@ -146,16 +146,22 @@ router.patch('/:id/status', requireAuth, async (req, res, next) => {
 // POST /api/appointments/test-review/:id — TEMPORARY, remove after confirming SMS works
 router.post('/test-review/:id', requireAdmin, async (req, res) => {
   try {
-    const { scheduleReviewForAppointment, sendReviewRequest } = require('../services/reviews');
+    // Clear existing requests so we can resend during testing
+    await pool.query(
+      'DELETE FROM review_requests WHERE appointment_id = $1',
+      [req.params.id]
+    );
 
     await pool.query(
       'UPDATE appointments SET status = $1, updated_at = NOW() WHERE id = $2',
       ['Completed', req.params.id]
     );
 
+    const { scheduleReviewForAppointment, sendReviewRequest } = require('../services/reviews');
+
     const requestId = await scheduleReviewForAppointment(req.params.id);
     if (!requestId) {
-      return res.json({ success: false, error: 'Could not schedule — already sent or no patient contact info' });
+      return res.json({ success: false, error: 'Could not schedule — check patient has phone or email' });
     }
 
     const result = await sendReviewRequest(requestId);

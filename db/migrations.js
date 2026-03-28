@@ -460,6 +460,15 @@ async function runMigrations() {
       BEFORE UPDATE ON appointments
       FOR EACH ROW EXECUTE FUNCTION update_updated_at_column()
   `).catch(err => console.error('[Migrations] updated_at trigger:', err.message));
+
+  // ── Seed contact info on test patient if missing ──────────────────────────
+  await pool.query(`
+    UPDATE patients
+    SET phone = '+17163363319',
+        email = 'drward@waldenbaileychiropratic.com'
+    WHERE first_name = 'Jonathan' AND last_name = 'Torres'
+      AND (phone IS NULL OR phone = '')
+  `).catch(err => console.error('[Migrations] Seed test patient contact:', err.message));
 }
 
 module.exports = runMigrations;

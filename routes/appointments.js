@@ -34,9 +34,14 @@ router.get('/by-date', async (req, res) => {
 // GET /api/appointments?date=YYYY-MM-DD or ?start=&end=
 router.get('/', async (req, res) => {
   try {
-    const { date, start, end, patient_id } = req.query;
+    const { date, start, end, patient_id, status, limit } = req.query;
     let q, params;
-    if (patient_id) {
+    if (status) {
+      const cap = status.charAt(0).toUpperCase() + status.slice(1).toLowerCase();
+      const lim = parseInt(limit, 10) || 100;
+      q = `SELECT a.*, p.first_name, p.last_name, p.phone FROM appointments a LEFT JOIN patients p ON a.patient_id = p.id WHERE a.status = $1 ORDER BY a.updated_at DESC NULLS LAST, a.date DESC LIMIT $2`;
+      params = [cap, lim];
+    } else if (patient_id) {
       q = `SELECT a.*, p.first_name, p.last_name, p.phone FROM appointments a LEFT JOIN patients p ON a.patient_id = p.id WHERE a.patient_id = $1 ORDER BY a.date DESC, a.time DESC`;
       params = [patient_id];
     } else if (date) {
@@ -96,16 +101,17 @@ router.put('/:id', async (req, res) => {
 router.patch('/:id/status', requireAuth, async (req, res, next) => {
   try {
     const { status } = req.body;
+    const normalizedStatus = status.charAt(0).toUpperCase() + status.slice(1).toLowerCase();
     const { rows } = await pool.query(
       'UPDATE appointments SET status = $1, updated_at = NOW() WHERE id = $2 RETURNING *',
-      [status, req.params.id]
+      [normalizedStatus, req.params.id]
     );
     if (!rows[0]) return res.status(404).json({ error: 'Not found' });
 
-    console.log('[Appointments] Status updated to:', status, 'for ID:', req.params.id);
+    console.log('[Appointments] Status updated to:', normalizedStatus, 'for ID:', req.params.id);
 
     // Trigger review when marked Completed
-    if (status === 'Completed' && process.env.GOOGLE_REVIEW_URL) {
+    if (normalizedStatus === 'Completed' && process.env.GOOGLE_REVIEW_URL) {
       console.log('[Reviews] Appointment completed — scheduling review request');
       const apptId = req.params.id;
       const delay = process.env.NODE_ENV === 'production'

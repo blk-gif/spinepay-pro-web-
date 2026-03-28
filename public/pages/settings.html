@@ -59,8 +59,9 @@
 
       <!-- Google Reviews Automation -->
       <div class="card" style="max-width:900px;margin-top:24px">
-        <div class="card-header">
+        <div class="card-header" style="display:flex;align-items:center;justify-content:space-between">
           <span class="card-title">&#11088; Google Reviews Automation</span>
+          <button class="btn btn-primary" id="test-review-btn" onclick="sendTestReview()">&#9993; Send Test Review</button>
         </div>
         <p style="color:#888;font-size:13px;margin-bottom:16px">
           Review requests are sent automatically 2 hours after an appointment is marked
@@ -427,6 +428,33 @@ async function loadReviewStats() {
     }
   } catch (err) {
     console.error('[Reviews] Stats load error:', err);
+  }
+}
+
+async function sendTestReview() {
+  const btn = document.getElementById('test-review-btn');
+  btn.disabled = true;
+  btn.textContent = 'Sending…';
+  try {
+    // Get most recent completed appointment
+    const appts = await GET('/api/appointments?status=Completed&limit=1');
+    if (!appts.length) {
+      showAlert('No completed appointments found. Mark an appointment as Completed first.', 'error');
+      return;
+    }
+    const appt = appts[0];
+    const data = await POST(`/api/appointments/test-review/${appt.id}`, {});
+    if (data.success) {
+      showAlert(`Test review sent for appointment #${appt.id} (${appt.patient_name || 'unknown'})`, 'success');
+      loadReviewStats();
+    } else {
+      showAlert('Test failed: ' + (data.error || 'Unknown error'), 'error');
+    }
+  } catch (err) {
+    showAlert('Test review error: ' + err.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '✉ Send Test Review';
   }
 }
 

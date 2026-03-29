@@ -24,6 +24,37 @@ function getTwilioClient() {
   return twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
 }
 
+async function sendSMS(to, body, reviewRequestId) {
+  const client = getTwilioClient();
+  if (!client || !GOOGLE_REVIEW_URL) return false;
+
+  const fromNumbers = [
+    process.env.TWILIO_PHONE_NUMBER || '+17164532864',
+    '+18339745809',  // toll-free fallback — no A2P registration needed
+  ];
+
+  for (const from of fromNumbers) {
+    try {
+      const message = await client.messages.create({ body, from, to });
+      console.log('[Reviews] SMS sent from', from, 'to', to, 'SID:', message.sid);
+      return true;
+    } catch (err) {
+      console.error('[Reviews] SMS failed from', from, '— Code:', err.code, 'Message:', err.message, 'More info:', err.moreInfo);
+      if (reviewRequestId) {
+        await pool.query(
+          'UPDATE review_requests SET error_message = $1 WHERE id = $2',
+          [`Twilio error ${err.code}: ${err.message}`, reviewRequestId]
+        ).catch(() => {});
+      }
+      if (err.code === 21608 || err.code === 30034) {
+        continue; // A2P not registered — try next number
+      }
+      break; // Different error — don't retry
+    }
+  }
+  return false;
+}
+
 async function sendReviewRequest(reviewRequestId) {
   const result = await pool.query(
     'SELECT * FROM review_requests WHERE id = $1',
@@ -54,20 +85,8 @@ async function sendReviewRequest(reviewRequestId) {
 
   // Send SMS via Twilio
   if (phone) {
-    try {
-      const client = getTwilioClient();
-      if (client && GOOGLE_REVIEW_URL) {
-        await client.messages.create({
-          body: `Thank you for visiting ${PRACTICE_NAME}! We hope you're feeling better. If you have a moment, we'd love a Google review: ${GOOGLE_REVIEW_URL} Reply STOP to opt out.`,
-          from: TWILIO_FROM,
-          to: phone,
-        });
-        smsSent = true;
-        console.log('[Reviews] SMS sent to:', phone);
-      }
-    } catch (err) {
-      console.error('[Reviews] SMS error:', err.message);
-    }
+    const smsBody = `Thank you for visiting ${PRACTICE_NAME}! We hope you're feeling better. If you have a moment, we'd love a Google review: ${GOOGLE_REVIEW_URL} Reply STOP to opt out.`;
+    smsSent = await sendSMS(phone, smsBody, reviewRequestId);
   }
 
   // Send Email via SendGrid

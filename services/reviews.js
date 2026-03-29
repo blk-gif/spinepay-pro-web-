@@ -100,7 +100,7 @@ async function sendReviewRequest(reviewRequestId) {
       await sgMail.send({
         to: request.patient_email,
         from: {
-          email: process.env.PRACTICE_EMAIL || 'drward@waldenbaileychiropractic.com',
+          email: 'jaytorres103@gmail.com', // temp — change to drward@waldenbaileychiropractic.com after verification
           name: 'Walden Bailey Chiropractic'
         },
         subject: `Thank you for visiting ${PRACTICE_NAME}!`,

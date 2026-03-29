@@ -29,8 +29,8 @@ async function sendSMS(to, body, reviewRequestId) {
   if (!client || !GOOGLE_REVIEW_URL) return false;
 
   const fromNumbers = [
-    process.env.TWILIO_PHONE_NUMBER || '+17164532864',
-    '+18339745809',  // toll-free fallback — no A2P registration needed
+    '+18339745809',  // toll-free — no A2P registration needed, primary
+    process.env.TWILIO_PHONE_NUMBER || '+17164532864',  // local — fallback once A2P done
   ];
 
   for (const from of fromNumbers) {

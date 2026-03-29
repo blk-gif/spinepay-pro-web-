@@ -37,7 +37,7 @@ services:
       - key: TWILIO_AUTH_TOKEN
         sync: false
       - key: TWILIO_PHONE_NUMBER
-        value: "+17164532864"
+        value: "+18339745809"
 
 databases:
   - name: spinepay-db

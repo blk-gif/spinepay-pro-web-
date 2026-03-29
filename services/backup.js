@@ -141,11 +141,11 @@ async function sendBackupFailureAlert(errorMessage) {
     const sgMail = require('@sendgrid/mail');
     sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 
-    const to = process.env.BACKUP_ALERT_EMAIL || process.env.PRACTICE_EMAIL || 'drward@waldenbaileychiropratic.com';
+    const to = process.env.BACKUP_ALERT_EMAIL || process.env.PRACTICE_EMAIL || 'drward@waldenbaileychiropractic.com';
 
     await sgMail.send({
       to,
-      from: process.env.PRACTICE_EMAIL || 'drward@waldenbaileychiropratic.com',
+      from: process.env.PRACTICE_EMAIL || 'drward@waldenbaileychiropractic.com',
       subject: 'SpinePay Pro Backup Failed',
       html: `
         <div style="font-family:Arial;max-width:600px;margin:0 auto">

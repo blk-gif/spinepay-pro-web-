@@ -469,6 +469,15 @@ async function runMigrations() {
     WHERE first_name = 'Jonathan' AND last_name = 'Torres'
       AND (phone IS NULL OR phone = '')
   `).catch(err => console.error('[Migrations] Seed test patient contact:', err.message));
+
+  // ── Link orphaned appointments to patients by name ────────────────────────
+  await pool.query(`
+    UPDATE appointments a
+    SET patient_id = p.id
+    FROM patients p
+    WHERE a.patient_id IS NULL
+      AND a.patient_name ILIKE (p.first_name || ' ' || p.last_name)
+  `).catch(err => console.error('[Migrations] Link orphaned appointments:', err.message));
 }
 
 module.exports = runMigrations;

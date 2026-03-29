@@ -146,25 +146,91 @@ router.patch('/:id/status', requireAuth, async (req, res, next) => {
 // POST /api/appointments/test-review/:id — TEMPORARY, remove after confirming SMS works
 router.post('/test-review/:id', requireAdmin, async (req, res) => {
   try {
-    // Clear existing requests so we can resend during testing
-    await pool.query(
-      'DELETE FROM review_requests WHERE appointment_id = $1',
-      [req.params.id]
-    );
+    const appointmentId = req.params.id;
+
+    // Clear existing review requests so we can resend during testing
+    await pool.query('DELETE FROM review_requests WHERE appointment_id = $1', [appointmentId]);
 
     await pool.query(
       'UPDATE appointments SET status = $1, updated_at = NOW() WHERE id = $2',
-      ['Completed', req.params.id]
+      ['Completed', appointmentId]
     );
 
-    const { scheduleReviewForAppointment, sendReviewRequest } = require('../services/reviews');
+    // Get appointment with patient info via JOIN
+    const apptResult = await pool.query(`
+      SELECT a.*, p.phone AS patient_phone, p.email AS patient_email,
+             p.first_name, p.last_name, p.id AS pid
+      FROM appointments a
+      LEFT JOIN patients p ON p.id = a.patient_id
+      WHERE a.id = $1
+    `, [appointmentId]);
 
-    const requestId = await scheduleReviewForAppointment(req.params.id);
-    if (!requestId) {
-      return res.json({ success: false, error: 'Could not schedule — check patient has phone or email' });
+    if (!apptResult.rows[0]) {
+      return res.json({ success: false, error: 'Appointment not found' });
     }
 
-    const result = await sendReviewRequest(requestId);
+    const appt = apptResult.rows[0];
+    console.log('[Reviews] Test appointment data:', JSON.stringify(appt));
+
+    let phone = appt.patient_phone;
+    let email = appt.patient_email;
+    let patientId = appt.patient_id;
+    let patientName = appt.patient_name;
+
+    // If patient_id not linked, look up by name
+    if (!phone && !email && appt.patient_name) {
+      const parts = appt.patient_name.trim().split(' ');
+      const firstName = parts[0];
+      const lastName = parts.slice(1).join(' ');
+      const pResult = await pool.query(
+        `SELECT * FROM patients WHERE first_name ILIKE $1 AND last_name ILIKE $2 LIMIT 1`,
+        [firstName, lastName]
+      );
+      if (pResult.rows[0]) {
+        const p = pResult.rows[0];
+        phone = p.phone;
+        email = p.email;
+        patientId = p.id;
+        patientName = `${p.first_name} ${p.last_name}`;
+        console.log('[Reviews] Found patient by name:', patientName, 'phone:', phone);
+      }
+    }
+
+    function normalizePhone(p) {
+      if (!p) return null;
+      const digits = p.replace(/\D/g, '');
+      if (digits.length === 10) return `+1${digits}`;
+      if (digits.length === 11) return `+${digits}`;
+      return `+${digits}`;
+    }
+
+    const normalizedPhone = normalizePhone(phone);
+    console.log('[Reviews] Contact — phone:', normalizedPhone, 'email:', email);
+
+    if (!normalizedPhone && !email) {
+      return res.json({
+        success: false,
+        error: `No contact info found. Patient: ${patientName}, appointment patient_id: ${appt.patient_id}`
+      });
+    }
+
+    // Insert review request directly with resolved contact info
+    const reqResult = await pool.query(`
+      INSERT INTO review_requests
+        (patient_id, patient_name, patient_phone, patient_email, appointment_id, channel, status)
+      VALUES ($1, $2, $3, $4, $5, $6, 'scheduled')
+      RETURNING id
+    `, [
+      patientId,
+      patientName,
+      normalizedPhone,
+      email,
+      appointmentId,
+      normalizedPhone ? 'SMS' : 'EMAIL'
+    ]);
+
+    const { sendReviewRequest } = require('../services/reviews');
+    const result = await sendReviewRequest(reqResult.rows[0].id);
     console.log('[Reviews] Test send result:', result);
     res.json({ success: true, result });
   } catch (err) {

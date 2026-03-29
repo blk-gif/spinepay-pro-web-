@@ -80,68 +80,87 @@ async function sendReviewRequest(reviewRequestId) {
     }
   }
 
-  let smsSent  = false;
+  let smsSent = false;
   let emailSent = false;
 
-  // Send SMS via Twilio
-  if (phone) {
-    const smsBody = `Thank you for visiting ${PRACTICE_NAME}! We hope you're feeling better. If you have a moment, we'd love a Google review: ${GOOGLE_REVIEW_URL} Reply STOP to opt out.`;
-    smsSent = await sendSMS(phone, smsBody, reviewRequestId);
+  // Try SMS
+  if (phone && GOOGLE_REVIEW_URL) {
+    smsSent = await sendSMS(phone,
+      `Thank you for visiting ${PRACTICE_NAME}! We hope you're feeling better. If you have a moment, we'd love a Google review: ${GOOGLE_REVIEW_URL} Reply STOP to opt out.`,
+      reviewRequestId
+    );
   }
 
-  // Send Email via SendGrid
+  // Always try email — don't wait for SMS to succeed or fail
   if (request.patient_email && process.env.SENDGRID_API_KEY && GOOGLE_REVIEW_URL) {
+    console.log('[Reviews] Attempting email to:', request.patient_email);
     try {
       const sgMail = require('@sendgrid/mail');
       sgMail.setApiKey(process.env.SENDGRID_API_KEY);
       await sgMail.send({
         to: request.patient_email,
-        from: process.env.PRACTICE_EMAIL || 'drward@waldenbaileychiropratic.com',
+        from: {
+          email: process.env.PRACTICE_EMAIL || 'drward@waldenbaileychiropratic.com',
+          name: 'Walden Bailey Chiropractic'
+        },
         subject: `Thank you for visiting ${PRACTICE_NAME}!`,
         html: `
-          <div style="font-family:Arial;max-width:600px;margin:0 auto">
-            <div style="background:#1a1a1a;padding:30px;text-align:center">
-              <h1 style="color:#FFD700;margin:0">Walden Bailey Chiropractic</h1>
-              <p style="color:#888">1086 Walden Ave Suite 1 &bull; Buffalo, NY 14211</p>
+          <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
+            <div style="background:#1a1a1a;padding:30px;text-align:center;">
+              <h1 style="color:#FFD700;margin:0;">Walden Bailey Chiropractic</h1>
+              <p style="color:#888;margin:8px 0 0;">1086 Walden Ave Suite 1 • Buffalo, NY 14211</p>
             </div>
-            <div style="padding:40px;background:#f9f9f9">
-              <h2>Thank you, ${request.patient_name}!</h2>
-              <p style="font-size:16px;line-height:1.6;color:#555">
+            <div style="padding:40px;background:#f9f9f9;">
+              <h2 style="color:#333;">Thank you, ${request.patient_name}!</h2>
+              <p style="font-size:16px;line-height:1.6;color:#555;">
                 We hope your visit went well and that you're feeling better.
                 Your health and comfort are our top priorities.
               </p>
-              <p style="font-size:16px;line-height:1.6;color:#555">
+              <p style="font-size:16px;line-height:1.6;color:#555;">
                 If you have a moment, we would truly appreciate you sharing
-                your experience with others. Your review helps us continue
-                serving the Buffalo community.
+                your experience. Your review helps us continue serving
+                the Buffalo community.
               </p>
-              <div style="text-align:center;margin:30px 0">
+              <div style="text-align:center;margin:30px 0;">
                 <a href="${GOOGLE_REVIEW_URL}"
-                   style="background:#FFD700;color:#000;padding:16px 32px;text-decoration:none;border-radius:8px;font-size:18px;font-weight:bold;display:inline-block">
-                  &#11088; Leave a Google Review
+                   style="background:#FFD700;color:#000;padding:16px 32px;
+                          text-decoration:none;border-radius:8px;font-size:18px;
+                          font-weight:bold;display:inline-block;">
+                  ⭐ Leave a Google Review
                 </a>
               </div>
-              <p style="color:#999;font-size:12px;text-align:center">
+              <p style="color:#999;font-size:12px;text-align:center;margin-top:30px;">
                 Thank you for choosing ${PRACTICE_NAME}.<br>
-                (716) 893-9200 &bull; drward@waldenbaileychiropratic.com
+                (716) 893-9200 • drward@waldenbaileychiropratic.com
               </p>
             </div>
           </div>
-        `,
+        `
       });
       emailSent = true;
-      console.log('[Reviews] Email sent to:', request.patient_email);
+      console.log('[Reviews] Email sent successfully to:', request.patient_email);
     } catch (err) {
-      console.error('[Reviews] Email error:', err.message);
+      console.error('[Reviews] Email failed:', err.message, err.response?.body?.errors);
     }
+  } else {
+    console.log('[Reviews] Email skipped — email:', request.patient_email,
+      'SendGrid configured:', !!process.env.SENDGRID_API_KEY,
+      'Review URL set:', !!GOOGLE_REVIEW_URL);
   }
 
   const sent = smsSent || emailSent;
   await pool.query(
-    `UPDATE review_requests SET status = $1, sent_at = NOW(), error_message = $2 WHERE id = $3`,
-    [sent ? 'sent' : 'failed', sent ? null : 'No contact method succeeded', reviewRequestId]
+    `UPDATE review_requests
+     SET status = $1, sent_at = NOW(), error_message = $2
+     WHERE id = $3`,
+    [
+      sent ? 'sent' : 'failed',
+      sent ? null : `SMS: ${smsSent ? 'ok' : 'failed'}, Email: ${emailSent ? 'ok' : 'failed'}`,
+      reviewRequestId
+    ]
   );
 
+  console.log('[Reviews] Final result — SMS:', smsSent, 'Email:', emailSent);
   return { success: sent, smsSent, emailSent };
 }
 

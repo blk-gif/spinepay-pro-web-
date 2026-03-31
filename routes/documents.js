@@ -7,6 +7,8 @@ const multer = require('multer');
 const { v4: uuidv4 } = require('uuid');
 const { pool }     = require('../db/pool');
 const { auditLog } = require('../middleware/audit');
+const { requireAdmin } = require('../middleware/auth');
+const archiver = require('archiver');
 
 const router = Router();
 
@@ -144,6 +146,154 @@ router.get('/types', (req, res) => {
   ]);
 });
 
+// GET /api/documents/admin/stats
+router.get('/admin/stats', requireAdmin, async (req, res) => {
+  try {
+    const [total, byType, expiringSoon, recentUploads, totalSize] = await Promise.all([
+      pool.query('SELECT COUNT(*) as count FROM documents WHERE deleted = false'),
+      pool.query(`
+        SELECT document_type, COUNT(*) as count, SUM(file_size) as total_size
+        FROM documents WHERE deleted = false
+        GROUP BY document_type ORDER BY count DESC
+      `),
+      pool.query(`
+        SELECT d.*, p.first_name, p.last_name
+        FROM documents d
+        LEFT JOIN patients p ON p.id = d.patient_id
+        WHERE d.deleted = false
+        AND d.retention_date <= NOW() + INTERVAL '90 days'
+        AND d.retention_date >= NOW()
+        ORDER BY d.retention_date ASC
+        LIMIT 20
+      `),
+      pool.query(`
+        SELECT d.*, p.first_name, p.last_name
+        FROM documents d
+        LEFT JOIN patients p ON p.id = d.patient_id
+        WHERE d.deleted = false
+        ORDER BY d.created_at DESC
+        LIMIT 10
+      `),
+      pool.query('SELECT SUM(file_size) as total FROM documents WHERE deleted = false'),
+    ]);
+
+    res.json({
+      totalDocuments: parseInt(total.rows[0].count),
+      totalSizeBytes: parseInt(totalSize.rows[0].total) || 0,
+      byType: byType.rows,
+      expiringSoon: expiringSoon.rows,
+      recentUploads: recentUploads.rows,
+    });
+  } catch (err) {
+    console.error('[Documents] Stats error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/documents/admin/audit
+router.get('/admin/audit', requireAdmin, async (req, res) => {
+  try {
+    const { document_id, patient_id, action: actionFilter, limit = 100 } = req.query;
+    let query = `
+      SELECT al.*, d.file_name, d.document_type
+      FROM audit_log al
+      LEFT JOIN documents d ON d.id = al.resource_id::integer
+      WHERE al.resource = 'document'
+    `;
+    const params = [];
+
+    if (document_id) { params.push(document_id); query += ` AND al.resource_id = $${params.length}`; }
+    if (patient_id)  { params.push(patient_id);  query += ` AND d.patient_id = $${params.length}`; }
+    if (actionFilter){ params.push(actionFilter); query += ` AND al.action = $${params.length}`; }
+
+    params.push(parseInt(limit));
+    query += ` ORDER BY al.created_at DESC LIMIT $${params.length}`;
+
+    const { rows } = await pool.query(query, params);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/documents/admin/bulk-delete
+router.post('/admin/bulk-delete', requireAdmin, async (req, res) => {
+  try {
+    const { ids } = req.body;
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ error: 'No document IDs provided' });
+    }
+    const placeholders = ids.map((_, i) => `$${i + 2}`).join(',');
+    await pool.query(
+      `UPDATE documents SET deleted = true, deleted_at = NOW(), deleted_by = $1
+       WHERE id IN (${placeholders}) AND deleted = false`,
+      [req.session.staff.id, ...ids]
+    );
+    await auditLog(req, 'BULK_DELETE', 'document', null);
+    res.json({ success: true, deletedCount: ids.length });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/documents/admin/patient-zip/:patientId
+router.get('/admin/patient-zip/:patientId', requireAdmin, async (req, res) => {
+  try {
+    const { patientId } = req.params;
+    const patResult = await pool.query(
+      'SELECT first_name, last_name FROM patients WHERE id = $1',
+      [patientId]
+    );
+    if (patResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Patient not found' });
+    }
+    const patient = patResult.rows[0];
+
+    const docs = await pool.query(
+      'SELECT * FROM documents WHERE patient_id = $1 AND deleted = false ORDER BY document_type, created_at',
+      [patientId]
+    );
+    if (docs.rows.length === 0) {
+      return res.status(404).json({ error: 'No documents found for this patient' });
+    }
+
+    const zipName = `${patient.last_name}_${patient.first_name}_documents_${new Date().toISOString().split('T')[0]}.zip`;
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="${zipName}"`);
+
+    const archive = archiver('zip', { zlib: { level: 6 } });
+    archive.pipe(res);
+
+    for (const doc of docs.rows) {
+      try {
+        if (S3_CONFIGURED) {
+          const command = new GetObjectCommand({
+            Bucket: doc.s3_bucket || BUCKET_NAME,
+            Key: doc.s3_key,
+          });
+          const s3Response = await s3Client.send(command);
+          const folderName = doc.document_type.replace(/\s+/g, '_');
+          archive.append(s3Response.Body, { name: `${folderName}/${doc.file_name}` });
+        } else {
+          const localPath = path.join(UPLOADS_DIR, doc.s3_key);
+          if (fs.existsSync(localPath)) {
+            const folderName = doc.document_type.replace(/\s+/g, '_');
+            archive.file(localPath, { name: `${folderName}/${doc.file_name}` });
+          }
+        }
+      } catch (s3Err) {
+        console.error('[Documents] Could not fetch from S3:', doc.s3_key, s3Err.message);
+      }
+    }
+
+    await auditLog(req, 'DOWNLOAD_ZIP', 'patient_documents', patientId);
+    await archive.finalize();
+  } catch (err) {
+    console.error('[Documents] ZIP error:', err.message);
+    if (!res.headersSent) res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/documents/:id/view  — returns signed/local URL
 router.get('/:id/view', async (req, res) => {
   try {
@@ -201,6 +351,58 @@ router.post('/upload', upload.single('file'), async (req, res) => {
     res.status(201).json({ success: true, document: rows[0] });
   } catch (err) {
     console.error('[Documents] Upload error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/documents/:id/preview  — inline signed URL + metadata
+router.get('/:id/preview', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      'SELECT * FROM documents WHERE id = $1 AND deleted = false',
+      [req.params.id]
+    );
+    if (!rows[0]) return res.status(404).json({ error: 'Document not found' });
+    const doc = rows[0];
+
+    let url;
+    if (S3_CONFIGURED) {
+      const command = new GetObjectCommand({
+        Bucket: BUCKET_NAME,
+        Key: doc.s3_key,
+        ResponseContentDisposition: 'inline',
+      });
+      url = await getSignedUrl(s3Client, command, { expiresIn: 3600 });
+    } else {
+      url = `/uploads/${doc.s3_key}`;
+    }
+
+    const PREVIEWABLE = ['application/pdf', 'image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+    await auditLog(req, 'PREVIEW', 'document', req.params.id);
+    res.json({
+      url,
+      document: doc,
+      canPreview: PREVIEWABLE.includes(doc.mime_type),
+    });
+  } catch (err) {
+    console.error('[Documents] Preview error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/documents/:id  — update metadata (type, notes)
+router.put('/:id', async (req, res) => {
+  try {
+    const { document_type, notes } = req.body;
+    const { rows } = await pool.query(
+      `UPDATE documents SET document_type = COALESCE($1, document_type), notes = COALESCE($2, notes)
+       WHERE id = $3 AND deleted = false RETURNING *`,
+      [document_type || null, notes !== undefined ? notes : null, req.params.id]
+    );
+    if (!rows[0]) return res.status(404).json({ error: 'Document not found' });
+    await auditLog(req, 'UPDATE', 'document', req.params.id);
+    res.json(rows[0]);
+  } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });

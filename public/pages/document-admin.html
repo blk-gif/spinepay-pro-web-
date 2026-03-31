@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Document Admin — SpinePay Pro</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <style>
+    .doc-admin-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .doc-stat-card {
+      background: var(--bg2, #1e1e1e);
+      border: 1px solid var(--border, #333);
+      border-radius: 12px;
+      padding: 20px;
+      text-align: center;
+    }
+    .doc-stat-value {
+      font-size: 2rem;
+      font-weight: 700;
+      color: var(--gold, #FFD700);
+    }
+    .doc-stat-label {
+      color: var(--text-muted, #888);
+      font-size: 0.85rem;
+      margin-top: 4px;
+    }
+    .expiry-warning {
+      background: rgba(255, 215, 0, 0.08);
+      border: 1px solid rgba(255, 215, 0, 0.3);
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin-bottom: 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .expiry-critical {
+      background: rgba(204, 0, 0, 0.08);
+      border-color: rgba(204, 0, 0, 0.4);
+    }
+    .preview-modal {
+      display: none;
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: rgba(0,0,0,0.85);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+    }
+    .preview-modal.active { display: flex; }
+    .preview-container {
+      background: var(--bg, #1a1a1a);
+      border: 1px solid var(--border, #333);
+      border-radius: 12px;
+      width: 90%;
+      max-width: 900px;
+      height: 80vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .preview-header {
+      background: var(--bg2, #1e1e1e);
+      padding: 16px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--border, #333);
+    }
+    .preview-body { flex: 1; overflow: hidden; }
+    .preview-body iframe, .preview-body img {
+      width: 100%; height: 100%; object-fit: contain; border: none;
+    }
+    .preview-unsupported {
+      display: flex; align-items: center; justify-content: center;
+      height: 100%; flex-direction: column;
+      color: var(--text-muted, #888); gap: 12px;
+    }
+    .bulk-bar {
+      background: var(--gold, #FFD700);
+      color: #000;
+      padding: 10px 16px;
+      border-radius: 8px;
+      display: none;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 12px;
+      font-weight: 600;
+      font-size: 14px;
+    }
+    .bulk-bar.visible { display: flex; }
+    .doc-type-badge {
+      background: var(--bg3, #2e2e2e);
+      color: var(--gold, #FFD700);
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .retention-badge { padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+    .retention-ok   { background: rgba(40,167,69,.15); color: #28a745; }
+    .retention-warn { background: rgba(255,193,7,.15);  color: #ffc107; }
+    .retention-crit { background: rgba(220,53,69,.15);  color: #dc3545; }
+    .da-tab-bar {
+      display: flex; gap: 4px;
+      margin-bottom: 20px;
+      border-bottom: 1px solid var(--border, #333);
+    }
+    .da-tab {
+      padding: 9px 18px; background: none; border: none;
+      color: var(--text-muted, #888); cursor: pointer;
+      border-bottom: 2px solid transparent; font-size: 13px;
+      transition: color .15s, border-color .15s;
+    }
+    .da-tab.active { color: var(--gold, #FFD700); border-bottom-color: var(--gold, #FFD700); font-weight: 600; }
+    .da-tab-panel { display: none; }
+    .da-tab-panel.active { display: block; }
+    .audit-row {
+      display: grid;
+      grid-template-columns: 150px 110px 1fr 130px;
+      gap: 10px;
+      padding: 9px 0;
+      border-bottom: 1px solid var(--bg2, #222);
+      font-size: 13px;
+    }
+    .audit-row:last-child { border-bottom: none; }
+    .filter-bar { display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+    .filter-bar input, .filter-bar select {
+      background: var(--bg2, #1e1e1e);
+      border: 1px solid var(--border, #333);
+      border-radius: 6px; padding: 8px 12px;
+      color: var(--text, #e0e0e0);
+      font-size: 13px; font-family: inherit;
+    }
+    .filter-bar input { flex: 1; min-width: 160px; }
+    tr.row-selected td { background: rgba(255,215,0,.04); }
+  </style>
+</head>
+<body>
+<div id="app">
+  <div id="sidebar"></div>
+  <div id="main">
+    <div id="topbar"></div>
+    <div id="content" class="main-content">
+      <div id="alert-area"></div>
+
+      <div class="card-header" style="margin-bottom:20px">
+        <span class="card-title">Document Admin</span>
+        <button class="btn btn-outline" onclick="exportReport()">📊 Export Report</button>
+      </div>
+
+      <!-- Tab Bar -->
+      <div class="da-tab-bar">
+        <button class="da-tab active" onclick="switchTab('overview',this)">📊 Overview</button>
+        <button class="da-tab" onclick="switchTab('all-docs',this)">📁 All Documents</button>
+        <button class="da-tab" onclick="switchTab('retention',this)">⏰ Retention</button>
+        <button class="da-tab" onclick="switchTab('audit',this)">🔍 Audit Trail</button>
+      </div>
+
+      <!-- ===== OVERVIEW ===== -->
+      <div id="tab-overview" class="da-tab-panel active">
+        <div class="doc-admin-grid">
+          <div class="doc-stat-card">
+            <div class="doc-stat-value" id="stat-total">—</div>
+            <div class="doc-stat-label">Total Documents</div>
+          </div>
+          <div class="doc-stat-card">
+            <div class="doc-stat-value" id="stat-size">—</div>
+            <div class="doc-stat-label">Total Storage Used</div>
+          </div>
+          <div class="doc-stat-card">
+            <div class="doc-stat-value" id="stat-expiring">—</div>
+            <div class="doc-stat-label">Expiring in 90 Days</div>
+          </div>
+          <div class="doc-stat-card">
+            <div class="doc-stat-value" id="stat-recent">—</div>
+            <div class="doc-stat-label">Uploaded This Month</div>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
+          <div class="card">
+            <div class="card-title" style="margin-bottom:14px;">Documents by Type</div>
+            <div id="type-breakdown" style="color:var(--text-muted)">Loading…</div>
+          </div>
+          <div class="card">
+            <div class="card-title" style="margin-bottom:14px;">Recent Uploads</div>
+            <div id="recent-uploads" style="color:var(--text-muted)">Loading…</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== ALL DOCUMENTS ===== -->
+      <div id="tab-all-docs" class="da-tab-panel">
+        <div class="filter-bar">
+          <input type="text" id="doc-search" placeholder="Search by filename or patient…" oninput="filterDocuments()">
+          <select id="doc-type-filter" onchange="filterDocuments()">
+            <option value="">All Types</option>
+            <option>Intake Form</option><option>Insurance Card</option><option>X-Ray</option>
+            <option>MRI</option><option>EOB</option><option>PI Document</option>
+            <option>HIPAA Authorization</option><option>Referral</option><option>Lab Results</option><option>Other</option>
+          </select>
+          <select id="doc-patient-filter" onchange="filterDocuments()">
+            <option value="">All Patients</option>
+          </select>
+          <button class="btn btn-outline" onclick="loadAllDocuments()">🔄 Refresh</button>
+        </div>
+
+        <div class="bulk-bar" id="bulk-bar">
+          <span id="bulk-count">0 selected</span>
+          <button class="btn btn-sm btn-outline" onclick="clearSelection()" style="background:#000;color:#FFD700;border-color:#000">✕ Clear</button>
+          <button class="btn btn-sm btn-danger" onclick="bulkDelete()" style="background:#cc0000;color:#fff;border-color:#cc0000">🗑 Delete Selected</button>
+        </div>
+
+        <div class="table-wrap">
+          <table id="all-docs-table">
+            <thead>
+              <tr>
+                <th style="width:32px"><input type="checkbox" id="select-all" onchange="toggleSelectAll(this)"></th>
+                <th>File</th><th>Patient</th><th>Type</th><th>Uploaded By</th>
+                <th>Date</th><th>Size</th><th>Retention</th><th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="all-docs-body">
+              <tr><td colspan="9" class="empty-state">Loading documents…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ===== RETENTION ===== -->
+      <div id="tab-retention" class="da-tab-panel">
+        <div class="card" style="margin-bottom:20px">
+          <div class="card-title" style="margin-bottom:8px">HIPAA Retention Policy</div>
+          <p style="color:var(--text-muted);font-size:14px;margin:0">
+            All patient documents are retained for <strong style="color:var(--gold,#FFD700)">7 years</strong> per HIPAA requirements.
+            Documents approaching their retention date are listed below.
+            Only admin users can permanently delete documents.
+          </p>
+        </div>
+        <div class="card-title" style="margin-bottom:14px">⚠️ Documents Expiring Within 90 Days</div>
+        <div id="retention-list" style="color:var(--text-muted)">Loading…</div>
+      </div>
+
+      <!-- ===== AUDIT TRAIL ===== -->
+      <div id="tab-audit" class="da-tab-panel">
+        <div class="filter-bar">
+          <input type="text" id="audit-search" placeholder="Filter audit trail…" oninput="filterAudit()">
+          <select id="audit-action-filter" onchange="loadAuditTrail()">
+            <option value="">All Actions</option>
+            <option value="UPLOAD">Upload</option>
+            <option value="VIEW">View</option>
+            <option value="PREVIEW">Preview</option>
+            <option value="DOWNLOAD_ZIP">Download ZIP</option>
+            <option value="DELETE">Delete</option>
+            <option value="BULK_DELETE">Bulk Delete</option>
+            <option value="UPDATE">Update</option>
+          </select>
+          <button class="btn btn-outline" onclick="loadAuditTrail()">🔄 Refresh</button>
+        </div>
+        <div id="audit-container">
+          <div class="audit-row" style="color:var(--text-muted);font-size:11px;font-weight:700;border-bottom:1px solid var(--border,#444)">
+            <span>TIMESTAMP</span><span>ACTION</span><span>DETAILS</span><span>STAFF</span>
+          </div>
+          <div id="audit-body">Loading…</div>
+        </div>
+      </div>
+
+    </div><!-- #content -->
+  </div><!-- #main -->
+</div><!-- #app -->
+
+<!-- Preview Modal -->
+<div class="preview-modal" id="preview-modal">
+  <div class="preview-container">
+    <div class="preview-header">
+      <div>
+        <div style="color:var(--gold,#FFD700);font-weight:600" id="preview-filename">Document Preview</div>
+        <div style="color:var(--text-muted,#888);font-size:12px" id="preview-meta"></div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <a id="preview-open-btn" href="#" target="_blank" class="btn btn-outline btn-sm">Open ↗</a>
+        <button class="btn btn-outline btn-sm" onclick="closePreview()">✕ Close</button>
+      </div>
+    </div>
+    <div class="preview-body" id="preview-body">
+      <div class="preview-unsupported"><span style="font-size:48px">📄</span><span>Loading…</span></div>
+    </div>
+  </div>
+</div>
+
+<script src="/js/layout.js"></script>
+<script>
+let allDocuments = [];
+let allAuditRows = [];
+let selectedIds = new Set();
+
+// ===== TABS =====
+function switchTab(name, btn) {
+  document.querySelectorAll('.da-tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.da-tab').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  btn.classList.add('active');
+  if (name === 'all-docs' && allDocuments.length === 0) loadAllDocuments();
+  if (name === 'retention') loadRetention();
+  if (name === 'audit') loadAuditTrail();
+}
+
+// ===== STATS =====
+async function loadStats() {
+  try {
+    const data = await GET('/api/documents/admin/stats');
+
+    document.getElementById('stat-total').textContent    = data.totalDocuments;
+    document.getElementById('stat-size').textContent     = fmtBytes(data.totalSizeBytes);
+    document.getElementById('stat-expiring').textContent = data.expiringSoon.length;
+
+    const thisMonth = data.recentUploads.filter(d =>
+      new Date(d.created_at).getMonth() === new Date().getMonth() &&
+      new Date(d.created_at).getFullYear() === new Date().getFullYear()
+    ).length;
+    document.getElementById('stat-recent').textContent = thisMonth;
+
+    const typeEl = document.getElementById('type-breakdown');
+    typeEl.innerHTML = data.byType.length === 0
+      ? '<p style="color:var(--text-muted)">No documents yet</p>'
+      : data.byType.map(t => `
+          <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--bg2,#222)">
+            <span class="doc-type-badge">${escHtml(t.document_type)}</span>
+            <span>${t.count} &nbsp;<span style="color:var(--text-muted)">${fmtBytes(parseInt(t.total_size)||0)}</span></span>
+          </div>`).join('');
+
+    const recentEl = document.getElementById('recent-uploads');
+    recentEl.innerHTML = data.recentUploads.length === 0
+      ? '<p style="color:var(--text-muted)">No recent uploads</p>'
+      : data.recentUploads.slice(0,5).map(d => `
+          <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--bg2,#222);align-items:center">
+            <div>
+              <div style="font-size:13px">${escHtml(d.file_name)}</div>
+              <div style="color:var(--text-muted);font-size:11px">${escHtml(d.patient_name||'No patient')} · ${escHtml(d.document_type)}</div>
+            </div>
+            <div style="color:var(--text-muted);font-size:11px;white-space:nowrap">${fmtDate(d.created_at)}</div>
+          </div>`).join('');
+  } catch (err) {
+    console.error('[DocAdmin] Stats error:', err);
+  }
+}
+
+// ===== ALL DOCUMENTS =====
+async function loadAllDocuments() {
+  try {
+    allDocuments = await GET('/api/documents');
+    await loadPatientFilter();
+    renderDocTable(allDocuments);
+  } catch (err) {
+    console.error('[DocAdmin] Load docs error:', err);
+  }
+}
+
+async function loadPatientFilter() {
+  try {
+    const patients = await GET('/api/patients');
+    const sel = document.getElementById('doc-patient-filter');
+    const existing = Array.from(sel.options).map(o => o.value);
+    patients.forEach(p => {
+      if (!existing.includes(String(p.id))) {
+        const opt = document.createElement('option');
+        opt.value = p.id;
+        opt.textContent = escHtml(p.first_name + ' ' + p.last_name);
+        sel.appendChild(opt);
+      }
+    });
+  } catch (_) {}
+}
+
+function filterDocuments() {
+  const search   = document.getElementById('doc-search').value.toLowerCase();
+  const type     = document.getElementById('doc-type-filter').value;
+  const patientId = document.getElementById('doc-patient-filter').value;
+  const filtered = allDocuments.filter(d => {
+    const matchSearch = !search || d.file_name.toLowerCase().includes(search) ||
+      (d.patient_name||'').toLowerCase().includes(search);
+    const matchType    = !type || d.document_type === type;
+    const matchPatient = !patientId || String(d.patient_id) === patientId;
+    return matchSearch && matchType && matchPatient;
+  });
+  renderDocTable(filtered);
+}
+
+function renderDocTable(docs) {
+  const tbody = document.getElementById('all-docs-body');
+  if (docs.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="9"><div class="empty-state"><p>No documents found</p></div></td></tr>';
+    return;
+  }
+  tbody.innerHTML = docs.map(d => {
+    const retClass = retentionClass(d.retention_date);
+    const days     = daysUntil(d.retention_date);
+    const sel      = selectedIds.has(d.id);
+    const daysLabel = days > 365 ? Math.floor(days/365)+'y' : days+'d';
+    const fnSafe    = d.file_name.replace(/'/g,"\\'");
+    const notesSafe = (d.notes||'').replace(/'/g,"\\'");
+    return `<tr data-id="${d.id}" class="${sel?'row-selected':''}">
+      <td><input type="checkbox" class="doc-cb" value="${d.id}" ${sel?'checked':''} onchange="toggleSelect(${d.id},this.checked)"></td>
+      <td>
+        <div style="display:flex;align-items:center;gap:7px">
+          <span style="font-size:18px">${fileIcon(d.mime_type)}</span>
+          <div>
+            <div style="font-size:13px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(d.file_name)}">${escHtml(d.file_name)}</div>
+            ${d.notes?`<div style="color:var(--text-muted);font-size:11px">${escHtml(d.notes)}</div>`:''}
+          </div>
+        </div>
+      </td>
+      <td style="color:var(--text-muted);font-size:13px">${escHtml(d.patient_name||'—')}</td>
+      <td><span class="doc-type-badge">${escHtml(d.document_type)}</span></td>
+      <td style="color:var(--text-muted);font-size:12px">${escHtml(d.uploaded_by_name||'—')}</td>
+      <td style="color:var(--text-muted);font-size:12px">${fmtDate(d.created_at)}</td>
+      <td style="color:var(--text-muted);font-size:12px">${fmtBytes(d.file_size||0)}</td>
+      <td><span class="retention-badge ${retClass}" title="Expires: ${d.retention_date||'unknown'}">${daysLabel}</span></td>
+      <td>
+        <div class="actions">
+          <button class="btn btn-sm btn-outline" onclick="previewDocument(${d.id})" title="Preview">👁</button>
+          <button class="btn btn-sm btn-outline" onclick="openDocument(${d.id})" title="Open">↗</button>
+          <button class="btn btn-sm btn-outline" onclick="editDocument(${d.id},'${fnSafe}','${escHtml(d.document_type)}','${notesSafe}')">✏</button>
+          <button class="btn btn-sm btn-danger"  onclick="deleteSingle(${d.id},'${fnSafe}')">🗑</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+// ===== RETENTION =====
+async function loadRetention() {
+  try {
+    const data = await GET('/api/documents/admin/stats');
+    const el = document.getElementById('retention-list');
+    if (data.expiringSoon.length === 0) {
+      el.innerHTML = '<div class="card" style="text-align:center;padding:32px;color:var(--text-muted)">✅ No documents expiring in the next 90 days</div>';
+      return;
+    }
+    el.innerHTML = data.expiringSoon.map(d => {
+      const days = daysUntil(d.retention_date);
+      const crit = days <= 30;
+      const fnSafe = d.file_name.replace(/'/g,"\\'");
+      return `<div class="expiry-warning ${crit?'expiry-critical':''}">
+        <div>
+          <div style="font-weight:600">${escHtml(d.file_name)}</div>
+          <div style="color:var(--text-muted);font-size:12px">${escHtml(d.patient_name||'No patient')} · ${escHtml(d.document_type)} · ${fmtBytes(d.file_size||0)}</div>
+        </div>
+        <div style="text-align:right">
+          <div style="color:${crit?'#dc3545':'#ffc107'};font-weight:700">${days} days</div>
+          <div style="color:var(--text-muted);font-size:11px">Expires ${d.retention_date}</div>
+          <button class="btn btn-sm btn-danger" onclick="deleteSingle(${d.id},'${fnSafe}')" style="margin-top:6px">Delete</button>
+        </div>
+      </div>`;
+    }).join('');
+  } catch (err) {
+    console.error('[DocAdmin] Retention error:', err);
+  }
+}
+
+// ===== AUDIT TRAIL =====
+async function loadAuditTrail() {
+  try {
+    const action = document.getElementById('audit-action-filter').value;
+    const url    = '/api/documents/admin/audit' + (action ? `?action=${encodeURIComponent(action)}` : '');
+    allAuditRows = await GET(url);
+    renderAudit(allAuditRows);
+  } catch (err) {
+    console.error('[DocAdmin] Audit error:', err);
+  }
+}
+
+function filterAudit() {
+  const search = document.getElementById('audit-search').value.toLowerCase();
+  const filtered = allAuditRows.filter(a =>
+    !search ||
+    (a.file_name||'').toLowerCase().includes(search) ||
+    (a.action||'').toLowerCase().includes(search) ||
+    (a.staff_name||'').toLowerCase().includes(search)
+  );
+  renderAudit(filtered);
+}
+
+function renderAudit(rows) {
+  const el = document.getElementById('audit-body');
+  if (rows.length === 0) {
+    el.innerHTML = '<div style="color:var(--text-muted);padding:20px;text-align:center">No audit records found</div>';
+    return;
+  }
+  el.innerHTML = rows.map(a => `
+    <div class="audit-row">
+      <span style="color:var(--text-muted)">${fmtDateTime(a.created_at)}</span>
+      <span style="color:var(--gold,#FFD700);font-weight:600">${escHtml(a.action||'')}</span>
+      <span>${a.file_name?`<strong>${escHtml(a.file_name)}</strong>`:''} ${a.resource_id?`<span style="color:var(--text-muted)">(ID: ${a.resource_id})</span>`:''}</span>
+      <span style="color:var(--text-muted)">${escHtml(a.staff_name||'—')}</span>
+    </div>`).join('');
+}
+
+// ===== DOCUMENT ACTIONS =====
+async function previewDocument(id) {
+  try {
+    const data = await GET(`/api/documents/${id}/preview`);
+    document.getElementById('preview-filename').textContent = data.document.file_name;
+    document.getElementById('preview-meta').textContent =
+      `${data.document.document_type} · ${fmtBytes(data.document.file_size||0)} · ${data.document.patient_name||'No patient'}`;
+    document.getElementById('preview-open-btn').href = data.url;
+
+    const body = document.getElementById('preview-body');
+    if (data.canPreview) {
+      body.innerHTML = data.document.mime_type === 'application/pdf'
+        ? `<iframe src="${data.url}" style="width:100%;height:100%;border:none"></iframe>`
+        : `<img src="${data.url}" style="width:100%;height:100%;object-fit:contain" alt="${escHtml(data.document.file_name)}">`;
+    } else {
+      body.innerHTML = `
+        <div class="preview-unsupported">
+          <span style="font-size:64px">${fileIcon(data.document.mime_type)}</span>
+          <p>${escHtml(data.document.file_name)}</p>
+          <p style="color:var(--text-muted)">Preview not available for this file type</p>
+          <a href="${data.url}" target="_blank" class="btn btn-primary">Download File</a>
+        </div>`;
+    }
+    document.getElementById('preview-modal').classList.add('active');
+  } catch (err) {
+    showAlert('Could not load preview: ' + err.message, 'error');
+  }
+}
+
+function closePreview() {
+  document.getElementById('preview-modal').classList.remove('active');
+  document.getElementById('preview-body').innerHTML = '';
+}
+
+async function openDocument(id) {
+  try {
+    const { url } = await GET(`/api/documents/${id}/view`);
+    window.open(url, '_blank');
+  } catch (err) {
+    showAlert('Could not open document', 'error');
+  }
+}
+
+async function deleteSingle(id, filename) {
+  if (!confirm(`Delete "${filename}"?\n\nThis document will be soft-deleted.`)) return;
+  try {
+    await DEL(`/api/documents/${id}`);
+    showAlert('Document deleted', 'success');
+    allDocuments = allDocuments.filter(d => d.id !== id);
+    filterDocuments();
+    loadStats();
+  } catch (err) {
+    showAlert('Delete failed: ' + err.message, 'error');
+  }
+}
+
+async function editDocument(id, filename, currentType, currentNotes) {
+  const newType  = prompt(`Document type for "${filename}":`, currentType);
+  if (!newType) return;
+  const newNotes = prompt('Notes (optional):', currentNotes);
+  try {
+    await PUT(`/api/documents/${id}`, { document_type: newType, notes: newNotes || null });
+    showAlert('Document updated', 'success');
+    loadAllDocuments();
+  } catch (err) {
+    showAlert('Update failed: ' + err.message, 'error');
+  }
+}
+
+// ===== BULK ACTIONS =====
+function toggleSelect(id, checked) {
+  if (checked) selectedIds.add(id); else selectedIds.delete(id);
+  updateBulkBar();
+}
+
+function toggleSelectAll(cb) {
+  document.querySelectorAll('.doc-cb').forEach(c => {
+    c.checked = cb.checked;
+    const id = parseInt(c.value);
+    if (cb.checked) selectedIds.add(id); else selectedIds.delete(id);
+  });
+  updateBulkBar();
+}
+
+function clearSelection() {
+  selectedIds.clear();
+  document.querySelectorAll('.doc-cb').forEach(c => c.checked = false);
+  const sa = document.getElementById('select-all');
+  if (sa) sa.checked = false;
+  updateBulkBar();
+}
+
+function updateBulkBar() {
+  const bar = document.getElementById('bulk-bar');
+  if (selectedIds.size > 0) {
+    bar.classList.add('visible');
+    document.getElementById('bulk-count').textContent = `${selectedIds.size} selected`;
+  } else {
+    bar.classList.remove('visible');
+  }
+}
+
+async function bulkDelete() {
+  if (selectedIds.size === 0) return;
+  if (!confirm(`Delete ${selectedIds.size} selected documents?\n\nThis will soft-delete all selected documents.`)) return;
+  try {
+    await POST('/api/documents/admin/bulk-delete', { ids: Array.from(selectedIds) });
+    showAlert(`${selectedIds.size} documents deleted`, 'success');
+    selectedIds.clear();
+    loadAllDocuments();
+    loadStats();
+  } catch (err) {
+    showAlert('Bulk delete failed: ' + err.message, 'error');
+  }
+}
+
+// ===== EXPORT =====
+function exportReport() {
+  if (allDocuments.length === 0) { showAlert('Load documents first (All Documents tab)', 'error'); return; }
+  const rows = allDocuments.map(d => [
+    `"${(d.file_name||'').replace(/"/g,'""')}"`,
+    `"${(d.patient_name||'').replace(/"/g,'""')}"`,
+    `"${(d.document_type||'').replace(/"/g,'""')}"`,
+    `"${(d.uploaded_by_name||'').replace(/"/g,'""')}"`,
+    `"${fmtDate(d.created_at)}"`,
+    `"${fmtBytes(d.file_size||0)}"`,
+    `"${d.retention_date||''}"`,
+  ].join(','));
+  const csv = ['File Name,Patient,Type,Uploaded By,Date,Size,Retention Date', ...rows].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = `document-report-${new Date().toISOString().split('T')[0]}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ===== HELPERS =====
+function fmtBytes(bytes) {
+  if (!bytes || bytes === 0) return '0 B';
+  const k = 1024, sizes = ['B','KB','MB','GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+}
+
+function fmtDateTime(dateStr) {
+  if (!dateStr) return '—';
+  return new Date(dateStr).toLocaleString('en-US', {
+    month:'short', day:'numeric', hour:'2-digit', minute:'2-digit',
+  });
+}
+
+function daysUntil(dateStr) {
+  if (!dateStr) return 9999;
+  return Math.ceil((new Date(dateStr) - new Date()) / (1000*60*60*24));
+}
+
+function retentionClass(dateStr) {
+  const d = daysUntil(dateStr);
+  if (d <= 30)  return 'retention-crit';
+  if (d <= 90)  return 'retention-warn';
+  return 'retention-ok';
+}
+
+function fileIcon(mime) {
+  if (!mime) return '📄';
+  if (mime === 'application/pdf') return '📋';
+  if (mime.startsWith('image/'))  return '🖼️';
+  if (mime.includes('word'))      return '📝';
+  return '📄';
+}
+
+// Close preview on backdrop click
+document.getElementById('preview-modal').addEventListener('click', function(e) {
+  if (e.target === this) closePreview();
+});
+
+// Init
+(async () => {
+  await requireLogin();
+  loadStats();
+})();
+</script>
+</body>
+</html>

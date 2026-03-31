@@ -97,7 +97,10 @@
     <div class="pt-panel" id="pt-panel-docs">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
         <span style="font-size:13px;color:var(--text-muted,#888)" id="pt-doc-count"></span>
-        <button class="btn btn-primary btn-sm" onclick="openPatientUpload()">+ Upload</button>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-outline btn-sm" id="pt-download-zip-btn" style="display:none" onclick="downloadPatientZip(detailPatientId, detailPatientName)">📦 Download All</button>
+          <button class="btn btn-primary btn-sm" onclick="openPatientUpload()">+ Upload</button>
+        </div>
       </div>
       <div class="table-wrap" style="max-height:320px;overflow-y:auto">
         <table>
@@ -296,8 +299,10 @@ async function openDetail(id) {
 async function loadPatientDocs() {
   const docs = await GET(`/api/documents/patient/${detailPatientId}`).catch(() => []);
   document.getElementById('pt-doc-count').textContent = `${docs.length} document${docs.length===1?'':'s'}`;
-  const tb = document.getElementById('pt-docs-tbody');
   const isAdmin = currentUser && currentUser.role === 'admin';
+  const zipBtn = document.getElementById('pt-download-zip-btn');
+  if (zipBtn) zipBtn.style.display = (isAdmin && docs.length > 0) ? '' : 'none';
+  const tb = document.getElementById('pt-docs-tbody');
   if (!docs.length) {
     tb.innerHTML = '<tr><td colspan="6"><div class="empty-state" style="padding:16px"><p>No documents yet</p></div></td></tr>';
     return;
@@ -401,6 +406,27 @@ async function submitPatientUpload() {
     alertEl.innerHTML = `<div class="alert alert-error">${escHtml(err.message)}</div>`;
   } finally {
     btn.disabled = false; btn.textContent = 'Upload';
+  }
+}
+
+async function downloadPatientZip(patientId, patientName) {
+  if (!patientId) return;
+  try {
+    showAlert('Preparing ZIP download…', 'success');
+    const res = await fetch(`/api/documents/admin/patient-zip/${patientId}`, { credentials: 'include' });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+      throw new Error(err.error);
+    }
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${patientName}_documents.zip`;
+    a.click();
+    window.URL.revokeObjectURL(url);
+  } catch (err) {
+    showAlert('ZIP download failed: ' + err.message, 'error');
   }
 }
 

@@ -100,7 +100,7 @@ async function sendReviewRequest(reviewRequestId) {
       await sgMail.send({
         to: request.patient_email,
         from: {
-          email: 'jaytorres103@gmail.com', // temp — change to drward@waldenbaileychiropractic.com after verification
+          email: 'jaytorres103@gmail.com', // temp — change to drward@waldenchiropractic.com after verification
           name: 'Walden Bailey Chiropractic'
         },
         subject: `Thank you for visiting ${PRACTICE_NAME}!`,
@@ -131,7 +131,7 @@ async function sendReviewRequest(reviewRequestId) {
               </div>
               <p style="color:#999;font-size:12px;text-align:center;margin-top:30px;">
                 Thank you for choosing ${PRACTICE_NAME}.<br>
-                (716) 893-9200 • drward@waldenbaileychiropractic.com
+                (716) 893-9200 • drward@waldenchiropractic.com
               </p>
             </div>
           </div>

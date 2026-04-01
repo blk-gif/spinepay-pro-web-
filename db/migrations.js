@@ -394,7 +394,7 @@ async function runMigrations() {
         ('PRACTICE_STATE', 'NY'),
         ('PRACTICE_ZIP', '14211'),
         ('PRACTICE_PHONE', '(716) 893-9200'),
-        ('PRACTICE_EMAIL', 'drward@waldenbaileychiropractic.com'),
+        ('PRACTICE_EMAIL', 'drward@waldenchiropractic.com'),
         ('BILLING_PROVIDER_NAME', 'Walden Bailey Chiropractic')
       ON CONFLICT DO NOTHING;
     `);
@@ -465,7 +465,7 @@ async function runMigrations() {
   await pool.query(`
     UPDATE patients
     SET phone = '+17163363319',
-        email = 'drward@waldenbaileychiropractic.com'
+        email = 'drward@waldenchiropractic.com'
     WHERE first_name = 'Jonathan' AND last_name = 'Torres'
       AND (phone IS NULL OR phone = '')
   `).catch(err => console.error('[Migrations] Seed test patient contact:', err.message));

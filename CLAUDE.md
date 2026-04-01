@@ -70,7 +70,7 @@ https://github.com/blk-gif/spinepay-pro-web-
 - AWS_REGION — us-east-1
 - NODE_ENV — production
 - PORT — 10000
-- PRACTICE_EMAIL — drward@waldenbaileychiropractic.com
+- PRACTICE_EMAIL — drward@waldenchiropractic.com
 
 ## Design
 - Background: #1a1a1a

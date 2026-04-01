@@ -19,7 +19,7 @@ services:
       - key: SENDGRID_API_KEY
         sync: false
       - key: PRACTICE_EMAIL
-        value: drward@waldenbaileychiropractic.com
+        value: drward@waldenchiropractic.com
       - key: AWS_ACCESS_KEY_ID
         sync: false
       - key: AWS_SECRET_ACCESS_KEY
@@ -29,7 +29,7 @@ services:
       - key: AWS_REGION
         value: us-east-2
       - key: BACKUP_ALERT_EMAIL
-        value: drward@waldenbaileychiropractic.com
+        value: drward@waldenchiropractic.com
       - key: GOOGLE_REVIEW_URL
         value: https://share.google/kIg7xz7XOleM0bw0B
       - key: TWILIO_ACCOUNT_SID

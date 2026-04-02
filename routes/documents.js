@@ -9,6 +9,7 @@ const { pool }     = require('../db/pool');
 const { auditLog } = require('../middleware/audit');
 const { requireAdmin } = require('../middleware/auth');
 const archiver = require('archiver');
+const { PutObjectCommand, GetObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
 
 const router = Router();
 
@@ -24,11 +25,10 @@ if (!S3_CONFIGURED) {
 
 // ── Storage backends ──────────────────────────────────────────────────────────
 
-let s3Client, BUCKET_NAME, PutObjectCommand, GetObjectCommand, getSignedUrl;
+let s3Client, BUCKET_NAME, getSignedUrl;
 
 if (S3_CONFIGURED) {
   ({ s3Client, BUCKET_NAME } = require('../config/s3'));
-  ({ PutObjectCommand, GetObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3'));
   ({ getSignedUrl } = require('@aws-sdk/s3-request-presigner'));
 }
 

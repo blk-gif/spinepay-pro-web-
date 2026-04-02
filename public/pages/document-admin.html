@@ -339,6 +339,36 @@
   </div><!-- #main -->
 </div><!-- #app -->
 
+<!-- Edit Document Modal -->
+<div class="modal-overlay hidden" id="edit-doc-modal">
+  <div class="modal" style="max-width:460px">
+    <div class="modal-header">
+      <span class="modal-title">Edit Document</span>
+      <button class="modal-close" onclick="closeModal('edit-doc-modal')">×</button>
+    </div>
+    <div id="edit-doc-alert"></div>
+    <div style="padding:0 0 12px">
+      <div style="color:var(--text-muted,#888);font-size:13px;margin-bottom:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" id="edit-doc-filename"></div>
+      <div class="form-group" style="margin-bottom:14px">
+        <label style="display:block;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted,#888);margin-bottom:6px">Document Type</label>
+        <select id="edit-doc-type" style="width:100%;background:var(--bg2,#1e1e1e);border:1px solid var(--border,#333);border-radius:6px;padding:9px 12px;color:var(--text,#e0e0e0);font-family:inherit;font-size:13px">
+          <option>Intake Form</option><option>Insurance Card</option><option>X-Ray</option>
+          <option>MRI</option><option>EOB</option><option>PI Document</option>
+          <option>HIPAA Authorization</option><option>Referral</option><option>Lab Results</option><option>Other</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label style="display:block;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted,#888);margin-bottom:6px">Notes</label>
+        <textarea id="edit-doc-notes" style="width:100%;min-height:70px;background:var(--bg2,#1e1e1e);border:1px solid var(--border,#333);border-radius:6px;padding:9px 12px;color:var(--text,#e0e0e0);font-family:inherit;font-size:13px;resize:vertical" placeholder="Optional notes…"></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('edit-doc-modal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveEdit()">Save Changes</button>
+    </div>
+  </div>
+</div>
+
 <!-- Reassign Patient Modal -->
 <div class="modal-overlay hidden" id="reassign-modal">
   <div class="modal" style="max-width:460px">
@@ -647,16 +677,34 @@ async function deleteSingle(id, filename) {
   }
 }
 
-async function editDocument(id, filename, currentType, currentNotes) {
-  const newType  = prompt(`Document type for "${filename}":`, currentType);
-  if (!newType) return;
-  const newNotes = prompt('Notes (optional):', currentNotes);
+let _editDocId = null;
+
+function editDocument(id, filename, currentType, currentNotes) {
+  _editDocId = id;
+  document.getElementById('edit-doc-filename').textContent = filename;
+  const typeSelect = document.getElementById('edit-doc-type');
+  if (typeSelect) {
+    for (let i = 0; i < typeSelect.options.length; i++) {
+      if (typeSelect.options[i].value === currentType) { typeSelect.selectedIndex = i; break; }
+    }
+  }
+  document.getElementById('edit-doc-notes').value = currentNotes || '';
+  document.getElementById('edit-doc-alert').innerHTML = '';
+  openModal('edit-doc-modal');
+}
+
+async function saveEdit() {
+  if (!_editDocId) return;
+  const document_type = document.getElementById('edit-doc-type').value;
+  const notes = document.getElementById('edit-doc-notes').value.trim() || null;
   try {
-    await PUT(`/api/documents/${id}`, { document_type: newType, notes: newNotes || null });
+    await PUT(`/api/documents/${_editDocId}`, { document_type, notes });
+    closeModal('edit-doc-modal');
     showAlert('Document updated', 'success');
     loadAllDocuments();
   } catch (err) {
-    showAlert('Update failed: ' + err.message, 'error');
+    document.getElementById('edit-doc-alert').innerHTML =
+      `<div class="alert alert-error">${escHtml(err.message)}</div>`;
   }
 }
 

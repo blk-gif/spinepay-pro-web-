@@ -383,6 +383,7 @@ async function runMigrations() {
 
     // ── Column additions for existing databases ───────────────────────────────
     await client.query(`ALTER TABLE time_clock ADD COLUMN IF NOT EXISTS approved_at TIMESTAMPTZ`).catch(() => {});
+    await client.query(`ALTER TABLE documents ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW()`).catch(() => {});
 
 
     // Default practice settings

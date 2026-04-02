@@ -28,7 +28,7 @@ let s3Client, BUCKET_NAME, PutObjectCommand, GetObjectCommand, getSignedUrl;
 
 if (S3_CONFIGURED) {
   ({ s3Client, BUCKET_NAME } = require('../config/s3'));
-  ({ PutObjectCommand, GetObjectCommand } = require('@aws-sdk/client-s3'));
+  ({ PutObjectCommand, GetObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3'));
   ({ getSignedUrl } = require('@aws-sdk/s3-request-presigner'));
 }
 
@@ -407,7 +407,48 @@ router.put('/:id', async (req, res) => {
   }
 });
 
-// DELETE /api/documents/:id  (soft delete — admin only)
+// PATCH /api/documents/:id  — reassign patient and/or update category (admin only)
+router.patch('/:id', requireAdmin, async (req, res) => {
+  try {
+    const { patient_id, document_type } = req.body;
+
+    // Resolve patient_name if patient_id is being set
+    let patientName = undefined;
+    if (patient_id !== undefined) {
+      if (patient_id === null || patient_id === '') {
+        patientName = null;
+      } else {
+        const pr = await pool.query('SELECT first_name, last_name FROM patients WHERE id = $1', [patient_id]);
+        patientName = pr.rows[0] ? `${pr.rows[0].first_name} ${pr.rows[0].last_name}` : null;
+      }
+    }
+
+    const { rows } = await pool.query(
+      `UPDATE documents
+       SET patient_id    = CASE WHEN $1::text IS NOT NULL THEN $2::integer ELSE patient_id END,
+           patient_name  = CASE WHEN $1::text IS NOT NULL THEN $3        ELSE patient_name END,
+           document_type = COALESCE($4, document_type),
+           updated_at    = NOW()
+       WHERE id = $5 AND deleted = false
+       RETURNING *`,
+      [
+        patient_id !== undefined ? 'set' : null,
+        patient_id || null,
+        patientName,
+        document_type || null,
+        req.params.id,
+      ]
+    );
+    if (!rows[0]) return res.status(404).json({ error: 'Document not found' });
+    await auditLog(req, 'REASSIGN', 'document', req.params.id);
+    res.json(rows[0]);
+  } catch (err) {
+    console.error('[Documents] Patch error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/documents/:id  (soft delete DB + hard delete from S3 — admin only)
 router.delete('/:id', async (req, res) => {
   try {
     if (req.session.staff.role !== 'admin') {
@@ -415,10 +456,23 @@ router.delete('/:id', async (req, res) => {
     }
     const { rows } = await pool.query(
       `UPDATE documents SET deleted = true, deleted_at = NOW(), deleted_by = $1
-       WHERE id = $2 AND deleted = false RETURNING id`,
+       WHERE id = $2 AND deleted = false RETURNING id, s3_key, s3_bucket`,
       [req.session.staff.id, req.params.id]
     );
     if (!rows[0]) return res.status(404).json({ error: 'Document not found' });
+
+    // Remove file from S3
+    if (S3_CONFIGURED && rows[0].s3_key) {
+      try {
+        await s3Client.send(new DeleteObjectCommand({
+          Bucket: rows[0].s3_bucket || BUCKET_NAME,
+          Key:    rows[0].s3_key,
+        }));
+      } catch (s3Err) {
+        console.error('[Documents] S3 delete failed (record still soft-deleted):', s3Err.message);
+      }
+    }
+
     await auditLog(req, 'DELETE', 'document', req.params.id);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }

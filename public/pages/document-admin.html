@@ -140,6 +140,19 @@
       font-size: 13px; font-family: inherit;
     }
     .filter-bar input { flex: 1; min-width: 160px; }
+    .admin-drop-zone {
+      border: 2px dashed var(--border, #444);
+      border-radius: 8px;
+      padding: 32px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color .2s, background .2s;
+      color: var(--text-muted, #888);
+    }
+    .admin-drop-zone:hover, .admin-drop-zone.drag-over {
+      border-color: var(--gold, #FFD700);
+      background: rgba(255,215,0,.05);
+    }
     tr.row-selected td { background: rgba(255,215,0,.04); }
   </style>
 </head>
@@ -160,6 +173,7 @@
       <div class="da-tab-bar">
         <button class="da-tab active" onclick="switchTab('overview',this)">📊 Overview</button>
         <button class="da-tab" onclick="switchTab('all-docs',this)">📁 All Documents</button>
+        <button class="da-tab" onclick="switchTab('upload',this)">⬆️ Upload</button>
         <button class="da-tab" onclick="switchTab('retention',this)">⏰ Retention</button>
         <button class="da-tab" onclick="switchTab('audit',this)">🔍 Audit Trail</button>
       </div>
@@ -234,6 +248,55 @@
         </div>
       </div>
 
+      <!-- ===== UPLOAD ===== -->
+      <div id="tab-upload" class="da-tab-panel">
+        <div class="card" style="max-width:620px">
+          <div class="card-title" style="margin-bottom:18px">Upload New Document</div>
+          <div id="upload-tab-alert"></div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Patient (optional)</label>
+              <select id="up-patient-admin" style="width:100%;background:var(--bg2,#1e1e1e);border:1px solid var(--border,#333);border-radius:6px;padding:9px 12px;color:var(--text,#e0e0e0);font-family:inherit;font-size:13px">
+                <option value="">— General / No Patient —</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Document Type *</label>
+              <select id="up-type-admin" style="width:100%;background:var(--bg2,#1e1e1e);border:1px solid var(--border,#333);border-radius:6px;padding:9px 12px;color:var(--text,#e0e0e0);font-family:inherit;font-size:13px">
+                <option value="">— Select Type —</option>
+                <option>Intake Form</option><option>Insurance Card</option><option>X-Ray</option>
+                <option>MRI</option><option>EOB</option><option>PI Document</option>
+                <option>HIPAA Authorization</option><option>Referral</option><option>Lab Results</option><option>Other</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>File *</label>
+            <div class="admin-drop-zone" id="admin-drop-zone" onclick="document.getElementById('admin-file-input').click()">
+              <input type="file" id="admin-file-input" accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.doc,.docx" style="display:none" onchange="handleAdminFileSelect(this.files[0])">
+              <div id="admin-drop-text">
+                <div style="font-size:28px;margin-bottom:8px">📁</div>
+                <div>Drag &amp; drop a file here, or click to browse</div>
+                <div style="font-size:11px;margin-top:6px;color:var(--text-muted,#888)">PDF, Images, Word — max 10 MB</div>
+              </div>
+            </div>
+            <div id="admin-progress-wrap" style="display:none;margin-top:8px">
+              <div style="background:var(--border,#333);border-radius:4px;height:6px;overflow:hidden">
+                <div id="admin-progress-bar" style="background:var(--gold,#FFD700);height:6px;width:0%;transition:width .2s"></div>
+              </div>
+              <div id="admin-progress-label" style="font-size:11px;color:var(--text-muted,#888);margin-top:4px">Uploading…</div>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Notes</label>
+            <textarea id="up-notes-admin" style="min-height:60px;width:100%;background:var(--bg2,#1e1e1e);border:1px solid var(--border,#333);border-radius:6px;padding:9px 12px;color:var(--text,#e0e0e0);font-family:inherit;font-size:13px;resize:vertical" placeholder="Optional notes about this document…"></textarea>
+          </div>
+          <div style="display:flex;gap:10px;justify-content:flex-end">
+            <button class="btn btn-primary" id="admin-upload-btn" onclick="submitAdminUpload()">⬆️ Upload Document</button>
+          </div>
+        </div>
+      </div>
+
       <!-- ===== RETENTION ===== -->
       <div id="tab-retention" class="da-tab-panel">
         <div class="card" style="margin-bottom:20px">
@@ -276,6 +339,29 @@
   </div><!-- #main -->
 </div><!-- #app -->
 
+<!-- Reassign Patient Modal -->
+<div class="modal-overlay hidden" id="reassign-modal">
+  <div class="modal" style="max-width:460px">
+    <div class="modal-header">
+      <span class="modal-title">Reassign Patient</span>
+      <button class="modal-close" onclick="closeModal('reassign-modal')">×</button>
+    </div>
+    <div id="reassign-alert"></div>
+    <div style="padding:0 0 12px">
+      <div style="color:var(--text-muted,#888);font-size:13px;margin-bottom:14px" id="reassign-doc-name"></div>
+      <label style="display:block;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted,#888);margin-bottom:6px">Patient</label>
+      <select id="reassign-patient-select" style="width:100%;background:var(--bg2,#1e1e1e);border:1px solid var(--border,#333);border-radius:6px;padding:9px 12px;color:var(--text,#e0e0e0);font-family:inherit;font-size:13px">
+        <option value="">— Unassigned / General —</option>
+      </select>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline btn-sm" onclick="saveReassign(null)" style="color:#e74c3c;border-color:#e74c3c">Unassign</button>
+      <button class="btn btn-outline" onclick="closeModal('reassign-modal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveReassign()">Save</button>
+    </div>
+  </div>
+</div>
+
 <!-- Preview Modal -->
 <div class="preview-modal" id="preview-modal">
   <div class="preview-container">
@@ -308,6 +394,7 @@ function switchTab(name, btn) {
   document.getElementById('tab-' + name).classList.add('active');
   btn.classList.add('active');
   if (name === 'all-docs' && allDocuments.length === 0) loadAllDocuments();
+  if (name === 'upload') loadUploadPatients();
   if (name === 'retention') loadRetention();
   if (name === 'audit') loadAuditTrail();
 }
@@ -427,7 +514,8 @@ function renderDocTable(docs) {
         <div class="actions">
           <button class="btn btn-sm btn-outline" onclick="previewDocument(${d.id})" title="Preview">👁</button>
           <button class="btn btn-sm btn-outline" onclick="openDocument(${d.id})" title="Open">↗</button>
-          <button class="btn btn-sm btn-outline" onclick="editDocument(${d.id},'${fnSafe}','${escHtml(d.document_type)}','${notesSafe}')">✏</button>
+          <button class="btn btn-sm btn-outline" onclick="editDocument(${d.id},'${fnSafe}','${escHtml(d.document_type)}','${notesSafe}')" title="Edit type/notes">✏</button>
+          <button class="btn btn-sm btn-outline" onclick="openReassign(${d.id},'${fnSafe}')" title="Reassign patient">👤</button>
           <button class="btn btn-sm btn-danger"  onclick="deleteSingle(${d.id},'${fnSafe}')">🗑</button>
         </div>
       </td>
@@ -639,6 +727,184 @@ function exportReport() {
   a.download = `document-report-${new Date().toISOString().split('T')[0]}.csv`;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+// ===== UPLOAD (Admin Tab) =====
+let adminSelectedFile = null;
+let adminAllPatients  = [];
+
+async function loadUploadPatients() {
+  if (adminAllPatients.length > 0) return; // already loaded
+  try {
+    adminAllPatients = await GET('/api/patients');
+    const sel = document.getElementById('up-patient-admin');
+    adminAllPatients.forEach(p => {
+      const opt = document.createElement('option');
+      opt.value = p.id;
+      opt.textContent = escHtml(p.first_name + ' ' + p.last_name);
+      sel.appendChild(opt);
+    });
+    // Also populate reassign modal select
+    populateReassignSelect();
+  } catch (err) {
+    console.error('[DocAdmin] Could not load patients for upload tab:', err);
+  }
+}
+
+function handleAdminFileSelect(file) {
+  if (!file) return;
+  if (file.size > 10 * 1024 * 1024) {
+    document.getElementById('upload-tab-alert').innerHTML =
+      '<div class="alert alert-error" style="margin-bottom:12px">File exceeds 10 MB limit</div>';
+    return;
+  }
+  adminSelectedFile = file;
+  document.getElementById('admin-drop-text').innerHTML =
+    `<div style="font-size:22px;margin-bottom:6px">✅</div>` +
+    `<div style="font-weight:600;color:var(--gold,#FFD700)">${escHtml(file.name)}</div>` +
+    `<div style="font-size:11px;margin-top:4px;color:var(--text-muted,#888)">${fmtBytes(file.size)}</div>`;
+  document.getElementById('upload-tab-alert').innerHTML = '';
+}
+
+// Drag and drop for admin upload tab
+document.addEventListener('DOMContentLoaded', function() {
+  const adz = document.getElementById('admin-drop-zone');
+  if (!adz) return;
+  adz.addEventListener('dragover',  e => { e.preventDefault(); adz.classList.add('drag-over'); });
+  adz.addEventListener('dragleave', () => adz.classList.remove('drag-over'));
+  adz.addEventListener('drop', e => {
+    e.preventDefault();
+    adz.classList.remove('drag-over');
+    if (e.dataTransfer.files[0]) handleAdminFileSelect(e.dataTransfer.files[0]);
+  });
+});
+
+async function submitAdminUpload() {
+  const patient_id    = document.getElementById('up-patient-admin').value;
+  const document_type = document.getElementById('up-type-admin').value;
+  const notes         = document.getElementById('up-notes-admin').value.trim();
+  const alertEl       = document.getElementById('upload-tab-alert');
+
+  if (!adminSelectedFile) {
+    alertEl.innerHTML = '<div class="alert alert-error" style="margin-bottom:12px">Please select a file</div>';
+    return;
+  }
+  if (!document_type) {
+    alertEl.innerHTML = '<div class="alert alert-error" style="margin-bottom:12px">Please select a document type</div>';
+    return;
+  }
+
+  const formData = new FormData();
+  formData.append('file', adminSelectedFile);
+  formData.append('document_type', document_type);
+  if (patient_id) formData.append('patient_id', patient_id);
+  if (notes)      formData.append('notes', notes);
+
+  const btn = document.getElementById('admin-upload-btn');
+  btn.disabled = true;
+  btn.textContent = 'Uploading…';
+  document.getElementById('admin-progress-wrap').style.display = 'block';
+  alertEl.innerHTML = '';
+
+  try {
+    await new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', '/api/documents/upload');
+      xhr.withCredentials = true;
+      xhr.upload.onprogress = e => {
+        if (e.lengthComputable) {
+          const pct = Math.round(e.loaded / e.total * 100);
+          document.getElementById('admin-progress-bar').style.width = pct + '%';
+          document.getElementById('admin-progress-label').textContent = `Uploading… ${pct}%`;
+        }
+      };
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) resolve(JSON.parse(xhr.responseText));
+        else {
+          try { reject(new Error(JSON.parse(xhr.responseText).error || `HTTP ${xhr.status}`)); }
+          catch (_) { reject(new Error(`HTTP ${xhr.status}`)); }
+        }
+      };
+      xhr.onerror = () => reject(new Error('Network error'));
+      xhr.send(formData);
+    });
+
+    // Reset form
+    adminSelectedFile = null;
+    document.getElementById('admin-file-input').value = '';
+    document.getElementById('up-patient-admin').value = '';
+    document.getElementById('up-type-admin').value = '';
+    document.getElementById('up-notes-admin').value = '';
+    document.getElementById('admin-drop-text').innerHTML =
+      '<div style="font-size:28px;margin-bottom:8px">📁</div>' +
+      '<div>Drag &amp; drop a file here, or click to browse</div>' +
+      '<div style="font-size:11px;margin-top:6px;color:var(--text-muted,#888)">PDF, Images, Word — max 10 MB</div>';
+    document.getElementById('admin-progress-wrap').style.display = 'none';
+    document.getElementById('admin-progress-bar').style.width = '0%';
+
+    showAlert('Document uploaded successfully', 'success');
+    loadStats();
+    allDocuments = []; // force reload on next all-docs tab visit
+  } catch (err) {
+    alertEl.innerHTML = `<div class="alert alert-error" style="margin-bottom:12px">${escHtml(err.message)}</div>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '⬆️ Upload Document';
+  }
+}
+
+// ===== REASSIGN PATIENT =====
+let reassignDocId = null;
+
+function populateReassignSelect() {
+  const sel = document.getElementById('reassign-patient-select');
+  if (!sel || sel.options.length > 1) return; // already populated
+  adminAllPatients.forEach(p => {
+    const opt = document.createElement('option');
+    opt.value = p.id;
+    opt.textContent = escHtml(p.first_name + ' ' + p.last_name);
+    sel.appendChild(opt);
+  });
+}
+
+async function openReassign(id, filename) {
+  reassignDocId = id;
+  document.getElementById('reassign-doc-name').textContent = `Document: ${filename}`;
+  document.getElementById('reassign-alert').innerHTML = '';
+
+  // Load patients if not yet loaded
+  if (adminAllPatients.length === 0) {
+    try {
+      adminAllPatients = await GET('/api/patients');
+      populateReassignSelect();
+    } catch (_) {}
+  } else {
+    populateReassignSelect();
+  }
+
+  // Pre-select current patient
+  const doc = allDocuments.find(d => d.id === id);
+  const sel = document.getElementById('reassign-patient-select');
+  sel.value = doc && doc.patient_id ? String(doc.patient_id) : '';
+
+  openModal('reassign-modal');
+}
+
+async function saveReassign(forceNull) {
+  if (!reassignDocId) return;
+  const sel = document.getElementById('reassign-patient-select');
+  const patient_id = forceNull === null ? null : (sel.value || null);
+
+  try {
+    await PATCH(`/api/documents/${reassignDocId}`, { patient_id });
+    showAlert(patient_id ? 'Patient assigned successfully' : 'Patient unassigned', 'success');
+    closeModal('reassign-modal');
+    loadAllDocuments();
+    loadStats();
+  } catch (err) {
+    document.getElementById('reassign-alert').innerHTML =
+      `<div class="alert alert-error" style="margin-bottom:12px">${escHtml(err.message)}</div>`;
+  }
 }
 
 // ===== HELPERS =====

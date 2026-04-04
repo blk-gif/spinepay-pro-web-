@@ -71,11 +71,18 @@ async function loadCases(){
     <td>${fmtMoney(c.lien_amount)}</td>
     <td>${fmtMoney(c.settlement_amount)}</td>
     <td>${statusBadge(c.case_status)}</td>
-    <td><button class="btn btn-sm btn-outline" onclick="editCase(${c.id})">Edit</button></td>
+    <td>
+      <button class="btn btn-sm btn-outline" onclick="editCase(${c.id})">Edit</button>
+      <button class="btn btn-sm btn-danger" onclick="removeCase(${c.id})" style="margin-left:6px">Remove</button>
+    </td>
   </tr>`).join('');
 }
 function openPiModal(){editPiId=null;document.getElementById('pi-modal-title').textContent='New PI Case';['patient','doa','type','ins','claim','atty','firm','atty-phone'].forEach(f=>{const el=document.getElementById('pi-'+f);if(el)el.value='';});['limit','lien','settlement'].forEach(f=>{document.getElementById('pi-'+f).value='0';});document.getElementById('pi-status').value='open';openModal('pi-modal');}
 function editCase(id){const c=cases.find(x=>x.id===id);if(!c)return;editPiId=id;document.getElementById('pi-modal-title').textContent='Edit PI Case';document.getElementById('pi-patient').value=c.patient_name||'';document.getElementById('pi-doa').value=c.date_of_accident?c.date_of_accident.split('T')[0]:'';document.getElementById('pi-type').value=c.accident_type||'';document.getElementById('pi-ins').value=c.insurance_company||'';document.getElementById('pi-claim').value=c.claim_number||'';document.getElementById('pi-limit').value=c.policy_limit||0;document.getElementById('pi-atty').value=c.attorney_name||'';document.getElementById('pi-firm').value=c.attorney_firm||'';document.getElementById('pi-atty-phone').value=c.attorney_phone||'';document.getElementById('pi-lien').value=c.lien_amount||0;document.getElementById('pi-settlement').value=c.settlement_amount||0;document.getElementById('pi-status').value=c.case_status||'open';openModal('pi-modal');}
+async function removeCase(id){
+  if(!confirm('Are you sure you want to delete this PI case? This cannot be undone.'))return;
+  try{const r=await fetch('/api/pi-cases/'+id,{method:'DELETE',credentials:'include'});if(!r.ok){const e=await r.json().catch(()=>({}));throw new Error(e.error||'Delete failed');}loadCases();}catch(e){alert(e.message);}
+}
 async function savePi(){
   const data={patient_name:document.getElementById('pi-patient').value.trim(),date_of_accident:document.getElementById('pi-doa').value||null,accident_type:document.getElementById('pi-type').value.trim()||null,insurance_company:document.getElementById('pi-ins').value.trim()||null,claim_number:document.getElementById('pi-claim').value.trim()||null,policy_limit:parseFloat(document.getElementById('pi-limit').value)||0,attorney_name:document.getElementById('pi-atty').value.trim()||null,attorney_firm:document.getElementById('pi-firm').value.trim()||null,attorney_phone:document.getElementById('pi-atty-phone').value.trim()||null,lien_amount:parseFloat(document.getElementById('pi-lien').value)||0,settlement_amount:parseFloat(document.getElementById('pi-settlement').value)||0,case_status:document.getElementById('pi-status').value};
   try{if(editPiId)await PUT('/api/pi-cases/'+editPiId,data);else await POST('/api/pi-cases',data);closeModal('pi-modal');loadCases();}catch(e){document.getElementById('pi-alert').innerHTML='<div class="alert alert-error">'+e.message+'</div>';}

@@ -586,6 +586,14 @@ window.SoapNotes = (() => {
     `;
     document.head.appendChild(style);
 
+    function isSupportedBrowser() {
+      const ua = navigator.userAgent;
+      const isEdge   = /Edg\//.test(ua);
+      const isChrome = /Chrome\//.test(ua) && !isEdge;
+      const isBrave  = isChrome && typeof navigator.brave !== 'undefined';
+      return (isChrome && !isBrave) || isEdge;
+    }
+
     function stopCurrent() {
       if (activeRecognition) {
         try { activeRecognition.stop(); } catch (_) {}
@@ -602,6 +610,17 @@ window.SoapNotes = (() => {
 
       btn.addEventListener('click', () => {
         if (btn === activeBtn) { stopCurrent(); return; }
+        if (!isSupportedBrowser()) {
+          let errEl = btn.parentElement.querySelector('.soap-mic-err');
+          if (!errEl) {
+            errEl = document.createElement('span');
+            errEl.className = 'soap-mic-err';
+            errEl.style.cssText = 'color:#e53e3e;font-size:11px;margin-left:6px;';
+            btn.insertAdjacentElement('afterend', errEl);
+          }
+          errEl.textContent = 'Voice dictation requires Chrome or Edge';
+          return;
+        }
         stopCurrent();
 
         const targetId = btn.dataset.target;

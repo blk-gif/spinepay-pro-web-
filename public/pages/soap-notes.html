@@ -152,12 +152,14 @@ async function saveNote(sign) {
   const style = document.createElement('style');
   style.textContent = '.snmic{background:#FFB612;border:none;border-radius:4px;color:#000;cursor:pointer;font-size:13px;padding:2px 7px;}.snmic:hover{background:#e0a000;}.snmic.recording{background:#e53e3e;color:#fff;animation:snpulse 1s ease-in-out infinite;}@keyframes snpulse{0%,100%{opacity:1;}50%{opacity:.55;}}';
   document.head.appendChild(style);
+  function isSupportedBrowser(){const ua=navigator.userAgent;const isEdge=/Edg\//.test(ua);const isChrome=/Chrome\//.test(ua)&&!isEdge;const isBrave=isChrome&&typeof navigator.brave!=='undefined';return(isChrome&&!isBrave)||isEdge;}
   let activeRec = null, activeBtn = null;
   function stop(){if(activeRec){try{activeRec.stop();}catch(_){}activeRec=null;}if(activeBtn){activeBtn.classList.remove('recording');activeBtn=null;}}
   document.querySelectorAll('.snmic').forEach(btn=>{
     btn.style.display='inline-block';
     btn.addEventListener('click',()=>{
       if(btn===activeBtn){stop();return;}
+      if(!isSupportedBrowser()){let el=btn.parentElement.querySelector('.snmic-err');if(!el){el=document.createElement('span');el.className='snmic-err';el.style.cssText='color:#e53e3e;font-size:11px;margin-left:6px;';btn.insertAdjacentElement('afterend',el);}el.textContent='Voice dictation requires Chrome or Edge';return;}
       stop();
       const ta=document.getElementById(btn.dataset.target);if(!ta)return;
       const rec=new SR();rec.continuous=true;rec.interimResults=false;rec.lang='en-US';

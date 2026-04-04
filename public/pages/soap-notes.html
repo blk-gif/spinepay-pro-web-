@@ -44,10 +44,10 @@
       <div class="form-group"><label>ICD Codes</label><input id="n-icd" type="text" placeholder="e.g. M54.5, M47.816" autocomplete="off"></div>
     </div>
     <div class="form-group"><label>CPT Codes</label><input id="n-cpt" type="text" placeholder="e.g. 98940, 97110"></div>
-    <div class="form-group"><label>S — Subjective</label><textarea id="n-subj" style="min-height:70px" placeholder="Patient's chief complaint and history…"></textarea></div>
-    <div class="form-group"><label>O — Objective</label><textarea id="n-obj" style="min-height:70px" placeholder="Examination findings, vitals, test results…"></textarea></div>
-    <div class="form-group"><label>A — Assessment</label><textarea id="n-assess" style="min-height:70px" placeholder="Diagnosis and clinical impression…"></textarea></div>
-    <div class="form-group"><label>P — Plan</label><textarea id="n-plan" style="min-height:70px" placeholder="Treatment plan, follow-up, referrals…"></textarea></div>
+    <div class="form-group"><label style="display:flex;align-items:center;justify-content:space-between;">S — Subjective<button type="button" class="snmic" data-target="n-subj" title="Click to dictate" style="display:none">🎤</button></label><textarea id="n-subj" style="min-height:70px" placeholder="Patient's chief complaint and history…"></textarea></div>
+    <div class="form-group"><label style="display:flex;align-items:center;justify-content:space-between;">O — Objective<button type="button" class="snmic" data-target="n-obj" title="Click to dictate" style="display:none">🎤</button></label><textarea id="n-obj" style="min-height:70px" placeholder="Examination findings, vitals, test results…"></textarea></div>
+    <div class="form-group"><label style="display:flex;align-items:center;justify-content:space-between;">A — Assessment<button type="button" class="snmic" data-target="n-assess" title="Click to dictate" style="display:none">🎤</button></label><textarea id="n-assess" style="min-height:70px" placeholder="Diagnosis and clinical impression…"></textarea></div>
+    <div class="form-group"><label style="display:flex;align-items:center;justify-content:space-between;">P — Plan<button type="button" class="snmic" data-target="n-plan" title="Click to dictate" style="display:none">🎤</button></label><textarea id="n-plan" style="min-height:70px" placeholder="Treatment plan, follow-up, referrals…"></textarea></div>
     <div class="modal-footer">
       <button class="btn btn-outline" onclick="closeModal('note-modal')">Cancel</button>
       <button class="btn btn-outline" onclick="saveNote(false)">Save Draft</button>
@@ -143,6 +143,29 @@ async function saveNote(sign) {
 (async () => {
   await requireLogin();
   await Promise.all([loadNotes(), loadPatientDropdown()]);
+})();
+
+// Voice dictation
+(function(){
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) return;
+  const style = document.createElement('style');
+  style.textContent = '.snmic{background:#FFB612;border:none;border-radius:4px;color:#000;cursor:pointer;font-size:13px;padding:2px 7px;}.snmic:hover{background:#e0a000;}.snmic.recording{background:#e53e3e;color:#fff;animation:snpulse 1s ease-in-out infinite;}@keyframes snpulse{0%,100%{opacity:1;}50%{opacity:.55;}}';
+  document.head.appendChild(style);
+  let activeRec = null, activeBtn = null;
+  function stop(){if(activeRec){try{activeRec.stop();}catch(_){}activeRec=null;}if(activeBtn){activeBtn.classList.remove('recording');activeBtn=null;}}
+  document.querySelectorAll('.snmic').forEach(btn=>{
+    btn.style.display='inline-block';
+    btn.addEventListener('click',()=>{
+      if(btn===activeBtn){stop();return;}
+      stop();
+      const ta=document.getElementById(btn.dataset.target);if(!ta)return;
+      const rec=new SR();rec.continuous=true;rec.interimResults=false;rec.lang='en-US';
+      rec.onresult=e=>{const t=Array.from(e.results).slice(e.resultIndex).map(r=>r[0].transcript).join('');const sep=ta.value&&!ta.value.endsWith(' ')?' ':'';ta.value+=sep+t;};
+      rec.onerror=()=>stop();rec.onend=()=>{if(activeRec===rec)stop();};
+      rec.start();activeRec=rec;activeBtn=btn;btn.classList.add('recording');
+    });
+  });
 })();
 </script>
 </body>

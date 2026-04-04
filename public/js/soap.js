@@ -94,29 +94,33 @@ window.SoapNotes = (() => {
               </div>
 
               <div class="form-group">
-                <label class="form-label" style="color:var(--gold);font-weight:700;">
-                  <i class="fa-solid fa-s"></i> Subjective — Patient's Description of Symptoms
+                <label class="form-label" style="color:var(--gold);font-weight:700;display:flex;align-items:center;justify-content:space-between;">
+                  <span><i class="fa-solid fa-s"></i> Subjective — Patient's Description of Symptoms</span>
+                  <button type="button" class="soap-mic-btn" data-target="soapSubjective" title="Click to dictate" style="display:none"><i class="fa-solid fa-microphone"></i></button>
                 </label>
                 <textarea class="form-control" id="soapSubjective" rows="4" placeholder="Chief complaint, onset, duration, quality, aggravating/relieving factors, associated symptoms..."></textarea>
               </div>
 
               <div class="form-group">
-                <label class="form-label" style="color:var(--gold);font-weight:700;">
-                  <i class="fa-solid fa-o"></i> Objective — Measurable Findings
+                <label class="form-label" style="color:var(--gold);font-weight:700;display:flex;align-items:center;justify-content:space-between;">
+                  <span><i class="fa-solid fa-o"></i> Objective — Measurable Findings</span>
+                  <button type="button" class="soap-mic-btn" data-target="soapObjective" title="Click to dictate" style="display:none"><i class="fa-solid fa-microphone"></i></button>
                 </label>
                 <textarea class="form-control" id="soapObjective" rows="4" placeholder="Vital signs, ROM, orthopedic tests, palpation findings, neurological exam results..."></textarea>
               </div>
 
               <div class="form-group">
-                <label class="form-label" style="color:var(--gold);font-weight:700;">
-                  <i class="fa-solid fa-a"></i> Assessment — Diagnosis / Clinical Impression
+                <label class="form-label" style="color:var(--gold);font-weight:700;display:flex;align-items:center;justify-content:space-between;">
+                  <span><i class="fa-solid fa-a"></i> Assessment — Diagnosis / Clinical Impression</span>
+                  <button type="button" class="soap-mic-btn" data-target="soapAssessment" title="Click to dictate" style="display:none"><i class="fa-solid fa-microphone"></i></button>
                 </label>
                 <textarea class="form-control" id="soapAssessment" rows="4" placeholder="Clinical diagnosis, severity, response to treatment, progress notes..."></textarea>
               </div>
 
               <div class="form-group">
-                <label class="form-label" style="color:var(--gold);font-weight:700;">
-                  <i class="fa-solid fa-p"></i> Plan — Treatment Plan
+                <label class="form-label" style="color:var(--gold);font-weight:700;display:flex;align-items:center;justify-content:space-between;">
+                  <span><i class="fa-solid fa-p"></i> Plan — Treatment Plan</span>
+                  <button type="button" class="soap-mic-btn" data-target="soapPlan" title="Click to dictate" style="display:none"><i class="fa-solid fa-microphone"></i></button>
                 </label>
                 <textarea class="form-control" id="soapPlan" rows="4" placeholder="Adjustments performed, therapies, home exercises, referrals, next visit, patient education..."></textarea>
               </div>
@@ -556,6 +560,79 @@ window.SoapNotes = (() => {
     win.document.close();
   }
 
+  // ── Voice Dictation ─────────────────────────────────────────────────────────
+  function initVoiceDictation() {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) return; // browser doesn't support — buttons stay hidden
+
+    let activeRecognition = null;
+    let activeBtn = null;
+
+    const style = document.createElement('style');
+    style.textContent = `
+      .soap-mic-btn {
+        background: #FFB612; border: none; border-radius: 4px;
+        color: #000; cursor: pointer; font-size: 13px;
+        padding: 3px 8px; line-height: 1; flex-shrink: 0;
+      }
+      .soap-mic-btn:hover { background: #e0a000; }
+      .soap-mic-btn.recording {
+        background: #e53e3e; color: #fff;
+        animation: soap-pulse 1s ease-in-out infinite;
+      }
+      @keyframes soap-pulse {
+        0%, 100% { opacity: 1; } 50% { opacity: 0.55; }
+      }
+    `;
+    document.head.appendChild(style);
+
+    function stopCurrent() {
+      if (activeRecognition) {
+        try { activeRecognition.stop(); } catch (_) {}
+        activeRecognition = null;
+      }
+      if (activeBtn) {
+        activeBtn.classList.remove('recording');
+        activeBtn = null;
+      }
+    }
+
+    document.querySelectorAll('.soap-mic-btn').forEach(btn => {
+      btn.style.display = 'inline-block';
+
+      btn.addEventListener('click', () => {
+        if (btn === activeBtn) { stopCurrent(); return; }
+        stopCurrent();
+
+        const targetId = btn.dataset.target;
+        const textarea = document.getElementById(targetId);
+        if (!textarea) return;
+
+        const rec = new SR();
+        rec.continuous = true;
+        rec.interimResults = false;
+        rec.lang = 'en-US';
+
+        rec.onresult = e => {
+          const transcript = Array.from(e.results)
+            .slice(e.resultIndex)
+            .map(r => r[0].transcript)
+            .join('');
+          const sep = textarea.value && !textarea.value.endsWith(' ') ? ' ' : '';
+          textarea.value += sep + transcript;
+        };
+
+        rec.onerror = () => stopCurrent();
+        rec.onend = () => { if (activeRecognition === rec) stopCurrent(); };
+
+        rec.start();
+        activeRecognition = rec;
+        activeBtn = btn;
+        btn.classList.add('recording');
+      });
+    });
+  }
+
   // ── Bind Events ─────────────────────────────────────────────────────────────
   function bindEvents() {
     document.getElementById('newSoapBtn')?.addEventListener('click', openNew);
@@ -570,6 +647,7 @@ window.SoapNotes = (() => {
     document.getElementById('soapModalSave')?.addEventListener('click', save);
     document.getElementById('soapPatient')?.addEventListener('change', onPatientChange);
     setupModalClose('soapModal', ['soapModalClose', 'soapModalCancel']);
+    initVoiceDictation();
   }
 
   return {

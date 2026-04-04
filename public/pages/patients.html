@@ -435,7 +435,13 @@ async function deletePatient(id) {
   if (!confirm('Are you sure you want to delete this patient? This will permanently remove all associated records. This cannot be undone.')) return;
   try {
     const r = await fetch('/api/patients/'+id, {method:'DELETE', credentials:'include'});
-    if (!r.ok) { const e = await r.json().catch(()=>({})); throw new Error(e.error||'Delete failed'); }
+    if (!r.ok) {
+      const e = await r.json().catch(()=>({}));
+      const msg = (e.blocking_tables && e.blocking_tables.length)
+        ? `${e.error} Blocking tables: ${e.blocking_tables.join(', ')}.`
+        : (e.error||'Delete failed');
+      throw new Error(msg);
+    }
     loadPatients();
   } catch(e) { showAlert(e.message, 'error'); }
 }

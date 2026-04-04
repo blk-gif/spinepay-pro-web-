@@ -70,19 +70,41 @@ router.delete('/:id', async (req, res) => {
   try {
     if (req.session.staff.role !== 'admin') return res.status(403).json({ error: 'Admin required' });
     const id = req.params.id;
-    // Block if any associated clinical records exist
-    const checks = await Promise.all([
-      pool.query('SELECT 1 FROM appointments   WHERE patient_id = $1 LIMIT 1', [id]),
-      pool.query('SELECT 1 FROM soap_notes     WHERE patient_id = $1 LIMIT 1', [id]),
-      pool.query('SELECT 1 FROM intake_forms   WHERE patient_id = $1 LIMIT 1', [id]),
-      pool.query('SELECT 1 FROM billing_claims WHERE patient_id = $1 LIMIT 1', [id]),
-      pool.query('SELECT 1 FROM documents      WHERE patient_id = $1 LIMIT 1', [id]),
-      pool.query('SELECT 1 FROM referrals      WHERE patient_id = $1 LIMIT 1', [id]),
-      pool.query('SELECT 1 FROM pi_cases       WHERE patient_id = $1 LIMIT 1', [id]),
-    ]);
-    if (checks.some(r => r.rows.length > 0)) {
-      return res.status(409).json({ error: 'This patient has existing records. Please remove associated records first.' });
+
+    // Auto-cascade background/system records that have no per-patient delete UI
+    await pool.query('DELETE FROM reminder_log    WHERE patient_id = $1', [id]);
+    await pool.query('DELETE FROM review_requests WHERE patient_id = $1', [id]);
+
+    // Check clinical records that require explicit user action to remove.
+    // documents: filter deleted=false only (soft-deleted docs should not block)
+    const tableChecks = [
+      { label: 'appointments',   q: 'SELECT 1 FROM appointments   WHERE patient_id = $1 LIMIT 1' },
+      { label: 'soap_notes',     q: 'SELECT 1 FROM soap_notes     WHERE patient_id = $1 LIMIT 1' },
+      { label: 'intake_forms',   q: 'SELECT 1 FROM intake_forms   WHERE patient_id = $1 LIMIT 1' },
+      { label: 'billing_claims', q: 'SELECT 1 FROM billing_claims WHERE patient_id = $1 LIMIT 1' },
+      { label: 'payments',       q: 'SELECT 1 FROM payments       WHERE patient_id = $1 LIMIT 1' },
+      { label: 'eob_records',    q: 'SELECT 1 FROM eob_records    WHERE patient_id = $1 LIMIT 1' },
+      { label: 'documents',      q: 'SELECT 1 FROM documents      WHERE patient_id = $1 AND (deleted IS NULL OR deleted = false) LIMIT 1' },
+      { label: 'referrals',      q: 'SELECT 1 FROM referrals      WHERE patient_id = $1 LIMIT 1' },
+      { label: 'pi_cases',       q: 'SELECT 1 FROM pi_cases       WHERE patient_id = $1 LIMIT 1' },
+      { label: 'waitlist',       q: 'SELECT 1 FROM waitlist       WHERE patient_id = $1 LIMIT 1' },
+      { label: 'transportation', q: 'SELECT 1 FROM transportation WHERE patient_id = $1 LIMIT 1' },
+      { label: 'hcfa_forms',     q: 'SELECT 1 FROM hcfa_forms     WHERE patient_id = $1 LIMIT 1' },
+    ];
+
+    const results = await Promise.all(
+      tableChecks.map(async c => ({ label: c.label, found: (await pool.query(c.q, [id])).rows.length > 0 }))
+    );
+    const blocking = results.filter(r => r.found).map(r => r.label);
+
+    if (blocking.length > 0) {
+      console.log(`[Patients] DELETE blocked for patient ${id} — records in: ${blocking.join(', ')}`);
+      return res.status(409).json({
+        error: 'This patient has existing records. Please remove associated records first.',
+        blocking_tables: blocking,
+      });
     }
+
     await pool.query('DELETE FROM patients WHERE id = $1', [id]);
     await auditLog(req, 'DELETE', 'patient', id);
     res.json({ success: true });

@@ -57,7 +57,7 @@ async function loadRefs() {
     <td>${fmtDate(r.sent_date)}</td>
     <td><div class="actions">
       ${r.status!=='sent'?'<button class="btn btn-sm btn-outline" onclick="markSent('+r.id+')">Mark Sent</button>':''}
-      <button class="btn btn-sm btn-danger" onclick="deleteRef('+r.id+')">Delete</button>
+      <button class="btn btn-sm btn-danger" onclick="deleteRef(${r.id})">Delete</button>
     </div></td>
   </tr>`).join('');
 }

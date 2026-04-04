@@ -65,12 +65,26 @@ router.put('/:id', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// DELETE /api/patients/:id (admin only handled at server level via requireAdmin)
+// DELETE /api/patients/:id (admin only)
 router.delete('/:id', async (req, res) => {
   try {
-    if (req.session.staff.role !== 'Admin') return res.status(403).json({ error: 'Admin required' });
-    await pool.query('UPDATE patients SET status = $1 WHERE id = $2', ['inactive', req.params.id]);
-    await auditLog(req, 'DELETE', 'patient', req.params.id);
+    if (req.session.staff.role !== 'admin') return res.status(403).json({ error: 'Admin required' });
+    const id = req.params.id;
+    // Block if any associated clinical records exist
+    const checks = await Promise.all([
+      pool.query('SELECT 1 FROM appointments   WHERE patient_id = $1 LIMIT 1', [id]),
+      pool.query('SELECT 1 FROM soap_notes     WHERE patient_id = $1 LIMIT 1', [id]),
+      pool.query('SELECT 1 FROM intake_forms   WHERE patient_id = $1 LIMIT 1', [id]),
+      pool.query('SELECT 1 FROM billing_claims WHERE patient_id = $1 LIMIT 1', [id]),
+      pool.query('SELECT 1 FROM documents      WHERE patient_id = $1 LIMIT 1', [id]),
+      pool.query('SELECT 1 FROM referrals      WHERE patient_id = $1 LIMIT 1', [id]),
+      pool.query('SELECT 1 FROM pi_cases       WHERE patient_id = $1 LIMIT 1', [id]),
+    ]);
+    if (checks.some(r => r.rows.length > 0)) {
+      return res.status(409).json({ error: 'This patient has existing records. Please remove associated records first.' });
+    }
+    await pool.query('DELETE FROM patients WHERE id = $1', [id]);
+    await auditLog(req, 'DELETE', 'patient', id);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

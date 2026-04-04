@@ -199,6 +199,7 @@ function renderTable(list) {
     <td><div class="actions">
       <button class="btn btn-sm btn-outline" onclick="editPatient(${p.id})">Edit</button>
       <button class="btn btn-sm btn-outline" onclick="openDetail(${p.id})">📁 Docs</button>
+      ${currentUser && currentUser.role === 'admin' ? `<button class="btn btn-sm btn-danger" onclick="deletePatient(${p.id})">Delete</button>` : ''}
     </div></td>
   </tr>`).join('');
 }
@@ -428,6 +429,15 @@ async function downloadPatientZip(patientId, patientName) {
   } catch (err) {
     showAlert('ZIP download failed: ' + err.message, 'error');
   }
+}
+
+async function deletePatient(id) {
+  if (!confirm('Are you sure you want to delete this patient? This will permanently remove all associated records. This cannot be undone.')) return;
+  try {
+    const r = await fetch('/api/patients/'+id, {method:'DELETE', credentials:'include'});
+    if (!r.ok) { const e = await r.json().catch(()=>({})); throw new Error(e.error||'Delete failed'); }
+    loadPatients();
+  } catch(e) { showAlert(e.message, 'error'); }
 }
 
 (async () => {

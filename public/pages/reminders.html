@@ -47,8 +47,9 @@
 </div>
 <script src="/js/layout.js"></script>
 <script>
-let templates = [], editTmplId = null;
+let templates = [], editTmplId = null, currentUser = null;
 async function loadAll() {
+  const isAdmin = currentUser && currentUser.role === 'admin';
   [templates] = await Promise.all([GET('/api/reminders/templates').catch(()=>[])]);
   const logList = await GET('/api/reminders/log').catch(()=>[]);
   const tmplEl = document.getElementById('tmpl-list');
@@ -56,7 +57,10 @@ async function loadAll() {
     <div style="padding:12px;border-bottom:1px solid var(--border)">
       <div style="display:flex;justify-content:space-between;align-items:center">
         <div><strong>${escHtml(t.name)}</strong> <span class="badge badge-blue" style="margin-left:6px">${t.type}</span></div>
-        <div><button class="btn btn-sm btn-outline" onclick="editTmpl(${t.id})">Edit</button></div>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-sm btn-outline" onclick="editTmpl(${t.id})">Edit</button>
+          ${isAdmin ? `<button class="btn btn-sm btn-danger" onclick="deleteTmpl(${t.id})">Delete</button>` : ''}
+        </div>
       </div>
       <div style="color:var(--text-muted);font-size:12px;margin-top:4px">${t.trigger_hours}h before — ${escHtml(t.body?.slice(0,80)+'...')}</div>
     </div>`).join('') : '<div class="empty-state"><div class="icon">🔔</div><p>No templates</p></div>';
@@ -70,7 +74,15 @@ async function saveTmpl() {
   if(!data.name||!data.body){document.getElementById('tmpl-alert').innerHTML='<div class="alert alert-error">Name and body required</div>';return;}
   try { if(editTmplId) await PUT('/api/reminders/templates/'+editTmplId,data); else await POST('/api/reminders/templates',data); closeModal('tmpl-modal'); loadAll(); } catch(e){document.getElementById('tmpl-alert').innerHTML='<div class="alert alert-error">'+e.message+'</div>';}
 }
-(async()=>{await requireLogin();loadAll();})();
+async function deleteTmpl(id) {
+  if (!confirm('Are you sure you want to delete this reminder template? This cannot be undone.')) return;
+  try {
+    const r = await fetch('/api/reminders/templates/'+id, {method:'DELETE', credentials:'include'});
+    if (!r.ok) { const e = await r.json().catch(()=>({})); throw new Error(e.error||'Delete failed'); }
+    loadAll();
+  } catch(e) { alert(e.message); }
+}
+(async()=>{currentUser=await requireLogin();loadAll();})();
 </script>
 </body>
 </html>

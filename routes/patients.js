@@ -71,12 +71,16 @@ router.delete('/:id', async (req, res) => {
     if (req.session.staff.role !== 'admin') return res.status(403).json({ error: 'Admin required' });
     const id = req.params.id;
 
-    // Auto-cascade background/system records that have no per-patient delete UI
-    await pool.query('DELETE FROM reminder_log    WHERE patient_id = $1', [id]);
-    await pool.query('DELETE FROM review_requests WHERE patient_id = $1', [id]);
+    // Nullify FK references on tables that lack ON DELETE SET NULL.
+    // documents and review_requests were defined without it; nullify rather
+    // than deleting so records remain in the system as unassigned.
+    await pool.query('UPDATE documents       SET patient_id = NULL WHERE patient_id = $1', [id]);
+    await pool.query('UPDATE review_requests SET patient_id = NULL WHERE patient_id = $1', [id]);
 
-    // Check clinical records that require explicit user action to remove.
-    // documents: filter deleted=false only (soft-deleted docs should not block)
+    // Auto-delete background log records (no meaningful standalone value)
+    await pool.query('DELETE FROM reminder_log WHERE patient_id = $1', [id]);
+
+    // Check clinical records that require explicit user action to remove first
     const tableChecks = [
       { label: 'appointments',   q: 'SELECT 1 FROM appointments   WHERE patient_id = $1 LIMIT 1' },
       { label: 'soap_notes',     q: 'SELECT 1 FROM soap_notes     WHERE patient_id = $1 LIMIT 1' },
@@ -84,7 +88,6 @@ router.delete('/:id', async (req, res) => {
       { label: 'billing_claims', q: 'SELECT 1 FROM billing_claims WHERE patient_id = $1 LIMIT 1' },
       { label: 'payments',       q: 'SELECT 1 FROM payments       WHERE patient_id = $1 LIMIT 1' },
       { label: 'eob_records',    q: 'SELECT 1 FROM eob_records    WHERE patient_id = $1 LIMIT 1' },
-      { label: 'documents',      q: 'SELECT 1 FROM documents      WHERE patient_id = $1 AND (deleted IS NULL OR deleted = false) LIMIT 1' },
       { label: 'referrals',      q: 'SELECT 1 FROM referrals      WHERE patient_id = $1 LIMIT 1' },
       { label: 'pi_cases',       q: 'SELECT 1 FROM pi_cases       WHERE patient_id = $1 LIMIT 1' },
       { label: 'waitlist',       q: 'SELECT 1 FROM waitlist       WHERE patient_id = $1 LIMIT 1' },

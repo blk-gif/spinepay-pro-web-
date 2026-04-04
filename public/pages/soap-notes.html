@@ -162,7 +162,8 @@ async function saveNote(sign) {
       const ta=document.getElementById(btn.dataset.target);if(!ta)return;
       const rec=new SR();rec.continuous=true;rec.interimResults=false;rec.lang='en-US';
       rec.onresult=e=>{const t=Array.from(e.results).slice(e.resultIndex).map(r=>r[0].transcript).join('');const sep=ta.value&&!ta.value.endsWith(' ')?' ':'';ta.value+=sep+t;};
-      rec.onerror=()=>stop();rec.onend=()=>{if(activeRec===rec)stop();};
+      rec.onerror=e=>{if(e.error==='no-speech')return;if(e.error==='not-allowed'||e.error==='service-not-available'){stop();let el=btn.parentElement.querySelector('.snmic-err');if(!el){el=document.createElement('span');el.className='snmic-err';el.style.cssText='color:#e53e3e;font-size:11px;margin-left:6px;';btn.insertAdjacentElement('afterend',el);}el.textContent='Microphone access denied';return;}stop();};
+      rec.onend=()=>{if(activeRec===rec){try{rec.start();}catch(_){stop();}}};
       rec.start();activeRec=rec;activeBtn=btn;btn.classList.add('recording');
     });
   });

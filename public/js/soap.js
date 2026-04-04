@@ -622,8 +622,31 @@ window.SoapNotes = (() => {
           textarea.value += sep + transcript;
         };
 
-        rec.onerror = () => stopCurrent();
-        rec.onend = () => { if (activeRecognition === rec) stopCurrent(); };
+        rec.onerror = e => {
+          if (e.error === 'no-speech') return; // onend will auto-restart
+          if (e.error === 'not-allowed' || e.error === 'service-not-available') {
+            stopCurrent();
+            let errEl = btn.parentElement.querySelector('.soap-mic-err');
+            if (!errEl) {
+              errEl = document.createElement('span');
+              errEl.className = 'soap-mic-err';
+              errEl.style.cssText = 'color:#e53e3e;font-size:11px;margin-left:6px;';
+              btn.insertAdjacentElement('afterend', errEl);
+            }
+            errEl.textContent = 'Microphone access denied';
+            return;
+          }
+          stopCurrent();
+        };
+        // If browser auto-stops after silence (common even with continuous=true),
+        // restart as long as the user hasn't toggled the mic off.
+        // stopCurrent() nulls activeRecognition before onend fires, so the check
+        // is false only when the user deliberately stopped.
+        rec.onend = () => {
+          if (activeRecognition === rec) {
+            try { rec.start(); } catch (_) { stopCurrent(); }
+          }
+        };
 
         rec.start();
         activeRecognition = rec;

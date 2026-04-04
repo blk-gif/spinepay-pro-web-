@@ -54,7 +54,9 @@
 </div>
 <script src="/js/layout.js"></script>
 <script>
+let currentUser = null;
 async function loadEobs(){
+  const isAdmin = currentUser && currentUser.role === 'admin';
   const list=await GET('/api/billing/eob').catch(()=>[]);
   const tb=document.getElementById('eob-tbody');
   if(!list.length){tb.innerHTML='<tr><td colspan="9"><div class="empty-state"><div class="icon">📄</div><p>No EOB records</p></div></td></tr>';return;}
@@ -67,15 +69,22 @@ async function loadEobs(){
     <td>${fmtMoney(e.paid_amount)}</td>
     <td>${fmtMoney(e.patient_resp)}</td>
     <td>${statusBadge(e.status)}</td>
-    <td>${e.discrepancy_flag?'<span class="badge badge-red">⚠ Discrepancy</span>':''}</td>
+    <td><div class="actions">
+      ${e.discrepancy_flag?'<span class="badge badge-red">⚠ Discrepancy</span>':''}
+      ${isAdmin?`<button class="btn btn-sm btn-danger" onclick="removeEob(${e.id})" style="margin-left:4px">Remove</button>`:''}
+    </div></td>
   </tr>`).join('');
+}
+async function removeEob(id){
+  if(!confirm('Are you sure you want to delete this record? This cannot be undone.'))return;
+  try{const r=await fetch('/api/eob/'+id,{method:'DELETE',credentials:'include'});if(!r.ok){const e=await r.json().catch(()=>({}));throw new Error(e.error||'Delete failed');}loadEobs();}catch(e){alert(e.message);}
 }
 function openEobModal(){['patient','payer','claim','denial'].forEach(f=>{document.getElementById('e-'+f).value='';});['billed','allowed','paid','resp'].forEach(f=>{document.getElementById('e-'+f).value='0';});document.getElementById('e-svc').value='';document.getElementById('e-received').value=new Date().toISOString().split('T')[0];openModal('eob-modal');}
 async function saveEob(){
   const data={patient_name:document.getElementById('e-patient').value.trim(),payer_name:document.getElementById('e-payer').value.trim()||null,claim_number:document.getElementById('e-claim').value.trim()||null,service_date:document.getElementById('e-svc').value||null,received_date:document.getElementById('e-received').value||null,billed_amount:parseFloat(document.getElementById('e-billed').value)||0,allowed_amount:parseFloat(document.getElementById('e-allowed').value)||0,paid_amount:parseFloat(document.getElementById('e-paid').value)||0,patient_resp:parseFloat(document.getElementById('e-resp').value)||0,denial_reason:document.getElementById('e-denial').value.trim()||null};
   try{await POST('/api/billing/eob',data);closeModal('eob-modal');loadEobs();}catch(e){document.getElementById('eob-alert').innerHTML='<div class="alert alert-error">'+e.message+'</div>';}
 }
-(async()=>{await requireLogin();loadEobs();})();
+(async()=>{currentUser=await requireLogin();loadEobs();})();
 </script>
 </body>
 </html>

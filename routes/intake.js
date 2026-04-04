@@ -34,6 +34,15 @@ router.get('/:id', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+router.delete('/:id', async (req, res) => {
+  try {
+    if (req.session.staff.role !== 'admin') return res.status(403).json({ error: 'Admin required' });
+    await pool.query('DELETE FROM intake_forms WHERE id = $1', [req.params.id]);
+    await auditLog(req, 'DELETE', 'intake_form', req.params.id);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 router.post('/', async (req, res) => {
   try {
     const { patient_id, full_name, dob, gender, address, phone, email, insurance_provider, policy_number, group_number, medical_history, current_medications, allergies, reason_for_visit, pain_scale, hipaa_acknowledged, signature, signature_date } = req.body;

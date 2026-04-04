@@ -60,7 +60,7 @@
 
 <script src="/js/layout.js"></script>
 <script>
-let appts = [], editApptId = null;
+let appts = [], editApptId = null, currentUser = null;
 const dp = () => document.getElementById('date-picker');
 
 function shiftDay(d) {
@@ -71,6 +71,7 @@ function shiftDay(d) {
 }
 
 async function loadAppts() {
+  const isAdmin = currentUser && currentUser.role === 'admin';
   const date = dp().value;
   appts = await GET('/api/appointments?date=' + date).catch(() => []);
   const tb = document.getElementById('appts-tbody');
@@ -89,10 +90,15 @@ async function loadAppts() {
         <option value="cancelled">Cancelled</option>
         <option value="no-show">No-Show</option>
       </select>
+      ${isAdmin?`<button class="btn btn-sm btn-danger" onclick="deleteAppt(${a.id})">Remove</button>`:''}
     </div></td>
   </tr>`).join('');
 }
 
+async function deleteAppt(id){
+  if(!confirm('Are you sure you want to delete this appointment? This cannot be undone.'))return;
+  try{const r=await fetch('/api/appointments/'+id,{method:'DELETE',credentials:'include'});if(!r.ok){const e=await r.json().catch(()=>({}));throw new Error(e.error||'Delete failed');}loadAppts();}catch(e){alert(e.message);}
+}
 async function changeStatus(id, status) {
   if (!status) return;
   await PATCH('/api/appointments/' + id + '/status', { status }).catch(e => showAlert(e.message));
@@ -144,7 +150,7 @@ async function saveAppt() {
 }
 
 (async () => {
-  await requireLogin();
+  currentUser = await requireLogin();
   dp().value = new Date().toISOString().split('T')[0];
   loadAppts();
   dp().addEventListener('change', loadAppts);

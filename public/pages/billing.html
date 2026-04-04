@@ -67,7 +67,7 @@
 
 <script src="/js/layout.js"></script>
 <script>
-let claims = [], editClaimId = null;
+let claims = [], editClaimId = null, currentUser = null;
 
 async function loadClaims() {
   const sf = document.getElementById('status-filter').value;
@@ -75,6 +75,7 @@ async function loadClaims() {
   const filtered = sf ? claims.filter(c => c.status === sf) : claims;
   const tb = document.getElementById('claims-tbody');
   if (!filtered.length) { tb.innerHTML = '<tr><td colspan="8"><div class="empty-state"><div class="icon">💰</div><p>No claims found</p></div></td></tr>'; return; }
+  const isAdmin = currentUser && currentUser.role === 'admin';
   tb.innerHTML = filtered.map(c => `<tr>
     <td><code style="font-size:11px">${escHtml(c.claim_number||'—')}</code></td>
     <td>${escHtml((c.first_name||c.patient_name||'')+(c.last_name?' '+c.last_name:''))}</td>
@@ -85,10 +86,15 @@ async function loadClaims() {
     <td>${statusBadge(c.status)}</td>
     <td><div class="actions">
       <button class="btn btn-sm btn-outline" onclick="editClaim(${c.id})">Edit</button>
+      ${isAdmin?`<button class="btn btn-sm btn-danger" onclick="removeClaim(${c.id})" style="margin-left:6px">Remove</button>`:''}
     </div></td>
   </tr>`).join('');
 }
 
+async function removeClaim(id){
+  if(!confirm('Are you sure you want to delete this claim? This cannot be undone.'))return;
+  try{const r=await fetch('/api/billing/claims/'+id,{method:'DELETE',credentials:'include'});if(!r.ok){const e=await r.json().catch(()=>({}));throw new Error(e.error||'Delete failed');}loadClaims();}catch(e){alert(e.message);}
+}
 function openClaimModal() {
   editClaimId = null;
   document.getElementById('claim-modal-title').textContent = 'New Claim';
@@ -136,7 +142,7 @@ async function saveClaim() {
   } catch (err) { document.getElementById('claim-alert').innerHTML='<div class="alert alert-error">'+err.message+'</div>'; }
 }
 
-(async () => { const u = await requireLogin(); loadClaims(); })();
+(async () => { currentUser = await requireLogin(); loadClaims(); })();
 </script>
 </body>
 </html>

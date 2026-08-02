@@ -175,6 +175,7 @@ async function loadEntries() {
         <div style="display:flex;gap:6px">
           ${approveBtn}
           <button class="btn btn-sm btn-outline" onclick="openEdit(${e.id})">Edit</button>
+          <button class="btn btn-sm btn-danger" onclick="deleteEntry(${e.id})">Delete</button>
         </div>
       </td>
     </tr>`;
@@ -245,6 +246,15 @@ async function saveEdit() {
     showAlert('Entry updated', 'success');
     loadEntries(); loadPayroll();
   } catch (e) { document.getElementById('edit-alert').innerHTML = `<div class="alert alert-error">${escHtml(e.message)}</div>`; }
+}
+
+async function deleteEntry(id) {
+  if (!confirm('Are you sure you want to delete this time entry? This cannot be undone.')) return;
+  try {
+    await DEL(`/api/timeclock/${id}`);
+    showAlert('Entry deleted', 'success');
+    loadEntries(); loadPayroll();
+  } catch (e) { showAlert(e.message || 'Failed to delete entry', 'error'); }
 }
 
 function exportCSV() {

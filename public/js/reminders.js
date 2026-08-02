@@ -59,7 +59,6 @@ window.Reminders = (() => {
           <div class="filter-bar">
             <div class="filter-chips" id="logFilterChips">
               <button class="filter-chip active" data-type="all">All</button>
-              <button class="filter-chip" data-type="sms">SMS</button>
               <button class="filter-chip" data-type="email">Email</button>
             </div>
           </div>
@@ -137,7 +136,6 @@ window.Reminders = (() => {
                 <div class="form-group">
                   <label class="form-label">Type</label>
                   <select class="form-control" id="tplType">
-                    <option value="sms">SMS</option>
                     <option value="email">Email</option>
                   </select>
                 </div>
@@ -341,7 +339,7 @@ window.Reminders = (() => {
       const activeTemplates = allTemplates.filter(t => t.active);
       tplSel.innerHTML = '<option value="">Select template...</option>' +
         activeTemplates.map(t =>
-          `<option value="${t.id}">${t.name} (${t.type === 'email' ? 'Email' : 'SMS'})</option>`
+          `<option value="${t.id}">${t.name} (Email)</option>`
         ).join('');
     }
   }
@@ -409,7 +407,7 @@ window.Reminders = (() => {
     document.getElementById('tplActive').checked = true;
     document.getElementById('tplActiveLabel').textContent = 'Active';
     document.getElementById('tplTriggerHours').value = '24';
-    toggleSubjectField('sms');
+    toggleSubjectField('email');
     openModal('templateModal');
   }
 
@@ -422,7 +420,7 @@ window.Reminders = (() => {
     if (titleEl) titleEl.textContent = 'Edit Template';
 
     document.getElementById('tplName').value         = t.name || '';
-    document.getElementById('tplType').value         = t.type || 'sms';
+    document.getElementById('tplType').value         = t.type || 'email';
     document.getElementById('tplTriggerHours').value = t.trigger_hours || 24;
     document.getElementById('tplSubject').value      = t.subject || '';
     document.getElementById('tplBody').value         = t.body || '';

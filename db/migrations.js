@@ -268,7 +268,7 @@ async function runMigrations() {
       CREATE TABLE IF NOT EXISTS reminder_templates (
         id            SERIAL PRIMARY KEY,
         name          TEXT NOT NULL,
-        type          TEXT DEFAULT 'sms',
+        type          TEXT DEFAULT 'email',
         trigger_hours INTEGER DEFAULT 24,
         subject       TEXT,
         body          TEXT NOT NULL,
@@ -431,7 +431,6 @@ async function runMigrations() {
   // Seed default reminder templates (safe now that constraint exists)
   await pool.query(`
     INSERT INTO reminder_templates (name, type, trigger_hours, subject, body) VALUES
-      ('24hr SMS', 'sms', 24, NULL, 'Hi {{patient_name}}, reminder: appointment tomorrow at {{time}}. Reply STOP to opt out.'),
       ('48hr Email', 'email', 48, 'Appointment Reminder — Walden Bailey Chiropractic', 'Dear {{patient_name}},\n\nThis is a reminder of your appointment on {{date}} at {{time}}.\n\nWalden Bailey Chiropractic\n(716) 893-9200')
     ON CONFLICT (name, type, trigger_hours) DO NOTHING
   `).catch(err => console.error('[Migrations] Seed reminder_templates:', err.message));

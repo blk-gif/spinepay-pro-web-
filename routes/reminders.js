@@ -15,7 +15,7 @@ router.post('/templates', async (req, res) => {
     const { name, type, trigger_hours, subject, body, active } = req.body;
     const { rows } = await pool.query(
       `INSERT INTO reminder_templates (name, type, trigger_hours, subject, body, active) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
-      [name, type||'sms', trigger_hours||24, subject||null, body, active !== false]
+      [name, 'email', trigger_hours||24, subject||null, body, active !== false]
     );
     res.status(201).json(rows[0]);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -26,7 +26,7 @@ router.put('/templates/:id', async (req, res) => {
     const { name, type, trigger_hours, subject, body, active } = req.body;
     const { rows } = await pool.query(
       `UPDATE reminder_templates SET name=$1, type=$2, trigger_hours=$3, subject=$4, body=$5, active=$6, updated_at=NOW() WHERE id=$7 RETURNING *`,
-      [name, type||'sms', trigger_hours||24, subject||null, body, active !== false, req.params.id]
+      [name, 'email', trigger_hours||24, subject||null, body, active !== false, req.params.id]
     );
     res.json(rows[0]);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -62,7 +62,7 @@ router.post('/send', async (req, res) => {
       .replace(/\{\{patient_name\}\}/g, `${appt.first_name} ${appt.last_name}`)
       .replace(/\{\{date\}\}/g, appt.date)
       .replace(/\{\{time\}\}/g, appt.time);
-    const recipient = t.type === 'sms' ? appt.phone : appt.email;
+    const recipient = appt.email;
     await pool.query(
       `INSERT INTO reminder_log (appointment_id, patient_id, template_id, type, recipient, message, status) VALUES ($1,$2,$3,$4,$5,$6,'sent')`,
       [appointment_id, appt.patient_id, template_id, t.type, recipient, msg]

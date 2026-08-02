@@ -32,7 +32,7 @@
     <div id="tmpl-alert"></div>
     <div class="form-row">
       <div class="form-group"><label>Name</label><input id="t-name" type="text"></div>
-      <div class="form-group"><label>Type</label><select id="t-type"><option value="sms">SMS</option><option value="email">Email</option></select></div>
+      <div class="form-group"><label>Type</label><select id="t-type"><option value="email">Email</option></select></div>
     </div>
     <div class="form-row">
       <div class="form-group"><label>Trigger (hours before)</label><input id="t-hours" type="number" value="24"></div>
@@ -67,8 +67,8 @@ async function loadAll() {
   const tb = document.getElementById('log-tbody');
   tb.innerHTML = logList.length ? logList.map(l => `<tr><td>${escHtml(l.patient_name||'—')}</td><td>${l.type}</td><td>${escHtml(l.recipient||'—')}</td><td>${fmtDate(l.sent_at)}</td></tr>`).join('') : '<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:20px">No log entries</td></tr>';
 }
-function openTmplModal() { editTmplId=null; document.getElementById('tmpl-modal-title').textContent='New Template'; ['name','subject','body'].forEach(f=>document.getElementById('t-'+f).value=''); document.getElementById('t-hours').value=24; document.getElementById('t-type').value='sms'; openModal('tmpl-modal'); }
-function editTmpl(id) { const t=templates.find(x=>x.id===id); if(!t)return; editTmplId=id; document.getElementById('tmpl-modal-title').textContent='Edit Template'; document.getElementById('t-name').value=t.name||''; document.getElementById('t-type').value=t.type||'sms'; document.getElementById('t-hours').value=t.trigger_hours||24; document.getElementById('t-subject').value=t.subject||''; document.getElementById('t-body').value=t.body||''; openModal('tmpl-modal'); }
+function openTmplModal() { editTmplId=null; document.getElementById('tmpl-modal-title').textContent='New Template'; ['name','subject','body'].forEach(f=>document.getElementById('t-'+f).value=''); document.getElementById('t-hours').value=24; document.getElementById('t-type').value='email'; openModal('tmpl-modal'); }
+function editTmpl(id) { const t=templates.find(x=>x.id===id); if(!t)return; editTmplId=id; document.getElementById('tmpl-modal-title').textContent='Edit Template'; document.getElementById('t-name').value=t.name||''; document.getElementById('t-type').value=t.type||'email'; document.getElementById('t-hours').value=t.trigger_hours||24; document.getElementById('t-subject').value=t.subject||''; document.getElementById('t-body').value=t.body||''; openModal('tmpl-modal'); }
 async function saveTmpl() {
   const data={name:document.getElementById('t-name').value.trim(),type:document.getElementById('t-type').value,trigger_hours:parseInt(document.getElementById('t-hours').value)||24,subject:document.getElementById('t-subject').value.trim()||null,body:document.getElementById('t-body').value.trim()};
   if(!data.name||!data.body){document.getElementById('tmpl-alert').innerHTML='<div class="alert alert-error">Name and body required</div>';return;}

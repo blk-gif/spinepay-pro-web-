@@ -392,6 +392,9 @@ window.TimeClock = (() => {
               <button class="btn btn-icon btn-sm btn-outline" title="Edit" onclick="window.TimeClock.openEditEntry(${entry.id})">
                 <i class="fa-solid fa-pen"></i>
               </button>
+              <button class="btn btn-icon btn-sm btn-danger" title="Delete" onclick="window.TimeClock.deleteEntry(${entry.id})">
+                <i class="fa-solid fa-trash"></i>
+              </button>
             ` : ''}
           </div>
         </td>
@@ -405,6 +408,24 @@ window.TimeClock = (() => {
     const totalEl   = document.getElementById('tcWeeklyTotal');
     if (totalEl) totalEl.textContent = `${wkHrs}h ${String(wkMins).padStart(2, '0')}m`;
     if (tfoot) tfoot.style.display = '';
+  }
+
+  // ── Delete Entry ───────────────────────────────────────────────────────────
+  async function deleteEntry(id) {
+    const confirmed = await confirm(
+      'Are you sure you want to delete this time entry? This cannot be undone.',
+      'Delete',
+      'btn-danger'
+    );
+    if (!confirmed) return;
+    try {
+      await window.api.timeclock.deleteEntry(id);
+      toast('Time entry deleted', 'success');
+      await loadWeekEntries();
+    } catch (err) {
+      console.error(err);
+      toast('Failed to delete time entry', 'error');
+    }
   }
 
   // ── Approve Entry ──────────────────────────────────────────────────────────
@@ -506,6 +527,7 @@ window.TimeClock = (() => {
     render,
     approveEntry,
     openEditEntry,
+    deleteEntry,
     refresh: loadAll
   };
 })();

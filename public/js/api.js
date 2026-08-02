@@ -176,6 +176,7 @@
       getEntries: (userId, startDate, endDate) => get(`/api/timeclock/entries?${userId ? `userId=${userId}&` : ''}startDate=${startDate}&endDate=${endDate}`),
       approve: (id, approverId) => patch(`/api/timeclock/${id}/approve`, { approverId }),
       update: (id, data) => put(`/api/timeclock/${id}`, data),
+      deleteEntry: (id) => del(`/api/timeclock/${id}`),
       getAllUsers: () => get('/api/timeclock/users')
     },
 

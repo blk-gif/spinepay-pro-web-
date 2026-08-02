@@ -120,6 +120,15 @@ router.put('/:id/approve', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+router.delete('/:id', async (req, res) => {
+  try {
+    if (req.session.staff.role !== 'admin') return res.status(403).json({ error: 'Admin required' });
+    const { rows } = await pool.query('DELETE FROM time_clock WHERE id = $1 RETURNING id', [req.params.id]);
+    if (!rows[0]) return res.status(404).json({ error: 'Entry not found' });
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 router.put('/:id/edit', async (req, res) => {
   try {
     if (req.session.staff.role !== 'admin') return res.status(403).json({ error: 'Admin required' });

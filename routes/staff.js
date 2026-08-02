@@ -89,6 +89,7 @@ router.delete('/:id', async (req, res) => {
     if (id === req.session.staff.id) {
       return res.status(400).json({ error: 'You cannot delete your own account' });
     }
+    await pool.query('DELETE FROM time_clock WHERE staff_id = $1', [id]);
     await pool.query('DELETE FROM staff_hipaa WHERE staff_id = $1', [id]);
     await pool.query('DELETE FROM staff_login_history WHERE staff_id = $1', [id]);
     await pool.query(

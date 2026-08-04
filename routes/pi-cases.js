@@ -50,10 +50,27 @@ router.post('/', async (req, res) => {
 
 router.put('/:id', async (req, res) => {
   try {
-    const { attorney_name, attorney_firm, attorney_phone, attorney_email, insurance_company, claim_number, adjuster_name, adjuster_phone, policy_limit, lien_amount, settlement_amount, case_status, notes } = req.body;
+    const { patient_id, patient_name, attorney_name, attorney_firm, attorney_phone, attorney_email, insurance_company, claim_number, adjuster_name, adjuster_phone, policy_limit, lien_amount, settlement_amount, case_status, notes } = req.body;
     const { rows } = await pool.query(
-      `UPDATE pi_cases SET attorney_name=$1, attorney_firm=$2, attorney_phone=$3, attorney_email=$4, insurance_company=$5, claim_number=$6, adjuster_name=$7, adjuster_phone=$8, policy_limit=$9, lien_amount=$10, settlement_amount=$11, case_status=$12, notes=$13, updated_at=NOW() WHERE id=$14 RETURNING *`,
-      [attorney_name||null, attorney_firm||null, attorney_phone||null, attorney_email||null, insurance_company||null, claim_number||null, adjuster_name||null, adjuster_phone||null, policy_limit||0, lien_amount||0, settlement_amount||0, case_status||'open', notes||null, req.params.id]
+      `UPDATE pi_cases SET
+         patient_id        = COALESCE($1::integer, patient_id),
+         patient_name      = COALESCE($2, patient_name),
+         attorney_name     = $3,
+         attorney_firm     = $4,
+         attorney_phone    = $5,
+         attorney_email    = $6,
+         insurance_company = $7,
+         claim_number      = $8,
+         adjuster_name     = $9,
+         adjuster_phone    = $10,
+         policy_limit      = $11,
+         lien_amount       = $12,
+         settlement_amount = $13,
+         case_status       = $14,
+         notes             = $15,
+         updated_at        = NOW()
+       WHERE id = $16 RETURNING *`,
+      [patient_id||null, patient_name||null, attorney_name||null, attorney_firm||null, attorney_phone||null, attorney_email||null, insurance_company||null, claim_number||null, adjuster_name||null, adjuster_phone||null, policy_limit||0, lien_amount||0, settlement_amount||0, case_status||'open', notes||null, req.params.id]
     );
     if (!rows[0]) return res.status(404).json({ error: 'Not found' });
     await auditLog(req, 'UPDATE', 'pi_case', req.params.id);

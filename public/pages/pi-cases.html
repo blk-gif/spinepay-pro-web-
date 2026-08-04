@@ -13,18 +13,40 @@
     <div id="content" class="main-content">
       <div id="alert-area"></div>
       <div class="card">
-        <div class="card-header"><span class="card-title">Personal Injury Cases</span><button class="btn btn-primary" onclick="openPiModal()">+ New Case</button></div>
+        <div class="card-header">
+          <span class="card-title">Personal Injury Cases</span>
+          <button class="btn btn-primary" onclick="openPiModal()">+ New Case</button>
+        </div>
         <div class="table-wrap">
-          <table><thead><tr><th>Patient</th><th>Accident Date</th><th>Type</th><th>Attorney</th><th>Lien</th><th>Settlement</th><th>Status</th><th>Actions</th></tr></thead>
-          <tbody id="pi-tbody"></tbody></table>
+          <table>
+            <thead>
+              <tr>
+                <th>Patient</th>
+                <th>Accident Date</th>
+                <th>Type</th>
+                <th>Insurance / Claim</th>
+                <th>Attorney</th>
+                <th>Lien</th>
+                <th>Settlement</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="pi-tbody"></tbody>
+          </table>
         </div>
       </div>
     </div>
   </div>
 </div>
+
+<!-- New / Edit PI Case Modal -->
 <div class="modal-overlay hidden" id="pi-modal">
   <div class="modal" style="max-width:640px">
-    <div class="modal-header"><span class="modal-title" id="pi-modal-title">New PI Case</span><button class="modal-close" onclick="closeModal('pi-modal')">×</button></div>
+    <div class="modal-header">
+      <span class="modal-title" id="pi-modal-title">New PI Case</span>
+      <button class="modal-close" onclick="closeModal('pi-modal')">×</button>
+    </div>
     <div id="pi-alert"></div>
     <div class="form-row">
       <div class="form-group"><label>Patient Name</label><input id="pi-patient" type="text"></div>
@@ -32,7 +54,7 @@
     </div>
     <div class="form-row">
       <div class="form-group"><label>Accident Type</label><input id="pi-type" type="text" placeholder="e.g. MVA, Slip & Fall"></div>
-      <div class="form-group"><label>Insurance Company</label><input id="pi-ins" type="text"></div>
+      <div class="form-group"><label>Insurance Company</label><input id="pi-ins" type="text" placeholder="e.g. Geico, State Farm..."></div>
     </div>
     <div class="form-row">
       <div class="form-group"><label>Claim Number</label><input id="pi-claim" type="text"></div>
@@ -48,7 +70,15 @@
     </div>
     <div class="form-row">
       <div class="form-group"><label>Settlement Amount</label><input id="pi-settlement" type="number" step="0.01" value="0"></div>
-      <div class="form-group"><label>Case Status</label><select id="pi-status"><option value="open">Open</option><option value="closed">Closed</option><option value="settled">Settled</option><option value="litigation">Litigation</option></select></div>
+      <div class="form-group"><label>Case Status</label>
+        <select id="pi-status">
+          <option value="open">Open</option>
+          <option value="in-negotiation">In Negotiation</option>
+          <option value="litigation">Litigation</option>
+          <option value="settled">Settled</option>
+          <option value="closed">Closed</option>
+        </select>
+      </div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-outline" onclick="closeModal('pi-modal')">Cancel</button>
@@ -56,38 +86,421 @@
     </div>
   </div>
 </div>
+
+<!-- Invoice Generator Modal -->
+<div class="modal-overlay hidden" id="pi-invoice-modal">
+  <div class="modal" style="max-width:860px;">
+    <div class="modal-header">
+      <span class="modal-title">⚖️ Generate PI Invoice</span>
+      <button class="modal-close" onclick="closeInvoiceModal()">×</button>
+    </div>
+
+    <!-- Case / patient summary -->
+    <div id="inv-summary" style="padding:12px;background:var(--bg-mid, #252525);border-radius:6px;
+         border:1px solid var(--border, #333);margin-bottom:14px;font-size:13px;
+         display:grid;grid-template-columns:repeat(3,1fr);gap:10px;"></div>
+
+    <!-- Date range row -->
+    <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:12px;align-items:flex-end;margin-bottom:14px;">
+      <div class="form-group" style="margin-bottom:0;">
+        <label>From Date</label>
+        <input type="date" id="inv-start" class="form-control">
+      </div>
+      <div class="form-group" style="margin-bottom:0;">
+        <label>To Date</label>
+        <input type="date" id="inv-end" class="form-control">
+      </div>
+      <button class="btn btn-outline" id="inv-load-btn" onclick="loadInvoiceVisits()">
+        🔄 Load Visits
+      </button>
+    </div>
+
+    <!-- Line items -->
+    <div id="inv-items-wrap"></div>
+
+    <!-- Adjustment + notes (hidden until visits load) -->
+    <div id="inv-adj-row" style="display:none;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px;">
+      <div class="form-group" style="margin-bottom:0;">
+        <label>Adjustment / Write-off ($)</label>
+        <input type="number" id="inv-adjustment" class="form-control" min="0" step="0.01" value="0"
+          oninput="updateInvoiceTotals()">
+      </div>
+      <div class="form-group" style="margin-bottom:0;">
+        <label>Invoice Notes (optional)</label>
+        <input type="text" id="inv-notes" class="form-control" placeholder="e.g. Per lien agreement...">
+      </div>
+    </div>
+
+    <!-- Totals -->
+    <div id="inv-totals" style="display:none;margin-top:12px;"></div>
+
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeInvoiceModal()">Cancel</button>
+      <button class="btn btn-primary" id="inv-download-btn" disabled onclick="downloadInvoicePDF()">
+        📄 Download Invoice PDF
+      </button>
+    </div>
+  </div>
+</div>
+
 <script src="/js/layout.js"></script>
 <script>
-let cases = [], editPiId = null;
-async function loadCases(){
-  cases=await GET('/api/pi-cases').catch(()=>[]);
-  const tb=document.getElementById('pi-tbody');
-  if(!cases.length){tb.innerHTML='<tr><td colspan="8"><div class="empty-state"><div class="icon">⚖️</div><p>No PI cases</p></div></td></tr>';return;}
-  tb.innerHTML=cases.map(c=>`<tr>
-    <td>${escHtml(c.patient_name||(c.first_name?(c.first_name+' '+c.last_name):'—'))}</td>
+'use strict';
+
+let cases = [], editPiId = null, invoiceCaseId = null, invoiceNotes = [];
+
+const CPT_LABELS = {
+  '98940': 'Chiropractic Manipulative Treatment (1-2 regions)',
+  '98941': 'Chiropractic Manipulative Treatment (3-4 regions)',
+  '98942': 'Chiropractic Manipulative Treatment (5 regions)',
+  '97012': 'Mechanical Traction',
+  '97014': 'Electrical Stimulation',
+  '97035': 'Ultrasound Therapy',
+  '97110': 'Therapeutic Exercise',
+  '97112': 'Neuromuscular Reeducation',
+  '97140': 'Manual Therapy Techniques',
+  '99213': 'Established Patient Office Visit (Level 3)',
+  '99214': 'Established Patient Office Visit (Level 4)',
+};
+
+function getCptDesc(cptCodes) {
+  if (!cptCodes || !cptCodes.trim()) return 'Chiropractic Treatment';
+  return cptCodes.split(/[,;]+/).map(c => c.trim()).filter(Boolean)
+    .map(c => CPT_LABELS[c] || ('CPT ' + c)).join('; ');
+}
+
+async function loadCases() {
+  cases = await GET('/api/pi-cases').catch(() => []);
+  const tb = document.getElementById('pi-tbody');
+  if (!cases.length) {
+    tb.innerHTML = '<tr><td colspan="9"><div class="empty-state"><div class="icon">⚖️</div><p>No PI cases</p></div></td></tr>';
+    return;
+  }
+  tb.innerHTML = cases.map(c => `<tr>
+    <td>${escHtml(c.patient_name || (c.first_name ? c.first_name + ' ' + c.last_name : '—'))}</td>
     <td>${fmtDate(c.date_of_accident)}</td>
-    <td>${escHtml(c.accident_type||'—')}</td>
-    <td>${escHtml(c.attorney_name||'—')}</td>
+    <td>${escHtml(c.accident_type || '—')}</td>
+    <td>
+      ${c.insurance_company ? escHtml(c.insurance_company) : '—'}
+      ${c.claim_number ? '<br><small style="color:#aaa;">' + escHtml(c.claim_number) + '</small>' : ''}
+    </td>
+    <td>${escHtml(c.attorney_name || '—')}</td>
     <td>${fmtMoney(c.lien_amount)}</td>
     <td>${fmtMoney(c.settlement_amount)}</td>
     <td>${statusBadge(c.case_status)}</td>
     <td>
-      <button class="btn btn-sm btn-outline" onclick="editCase(${c.id})">Edit</button>
-      <button class="btn btn-sm btn-danger" onclick="removeCase(${c.id})" style="margin-left:6px">Remove</button>
+      <button class="btn btn-sm btn-outline" style="color:#FFD700;border-color:#FFD700;"
+        onclick="openInvoiceModal(${c.id})" title="Generate Invoice">📄 Invoice</button>
+      <button class="btn btn-sm btn-outline" onclick="editCase(${c.id})" style="margin-left:4px">Edit</button>
+      <button class="btn btn-sm btn-danger" onclick="removeCase(${c.id})" style="margin-left:4px">Remove</button>
     </td>
   </tr>`).join('');
 }
-function openPiModal(){editPiId=null;document.getElementById('pi-modal-title').textContent='New PI Case';['patient','doa','type','ins','claim','atty','firm','atty-phone'].forEach(f=>{const el=document.getElementById('pi-'+f);if(el)el.value='';});['limit','lien','settlement'].forEach(f=>{document.getElementById('pi-'+f).value='0';});document.getElementById('pi-status').value='open';openModal('pi-modal');}
-function editCase(id){const c=cases.find(x=>x.id===id);if(!c)return;editPiId=id;document.getElementById('pi-modal-title').textContent='Edit PI Case';document.getElementById('pi-patient').value=c.patient_name||'';document.getElementById('pi-doa').value=c.date_of_accident?c.date_of_accident.split('T')[0]:'';document.getElementById('pi-type').value=c.accident_type||'';document.getElementById('pi-ins').value=c.insurance_company||'';document.getElementById('pi-claim').value=c.claim_number||'';document.getElementById('pi-limit').value=c.policy_limit||0;document.getElementById('pi-atty').value=c.attorney_name||'';document.getElementById('pi-firm').value=c.attorney_firm||'';document.getElementById('pi-atty-phone').value=c.attorney_phone||'';document.getElementById('pi-lien').value=c.lien_amount||0;document.getElementById('pi-settlement').value=c.settlement_amount||0;document.getElementById('pi-status').value=c.case_status||'open';openModal('pi-modal');}
-async function removeCase(id){
-  if(!confirm('Are you sure you want to delete this PI case? This cannot be undone.'))return;
-  try{const r=await fetch('/api/pi-cases/'+id,{method:'DELETE',credentials:'include'});if(!r.ok){const e=await r.json().catch(()=>({}));throw new Error(e.error||'Delete failed');}loadCases();}catch(e){alert(e.message);}
+
+function openPiModal() {
+  editPiId = null;
+  document.getElementById('pi-modal-title').textContent = 'New PI Case';
+  ['patient','doa','type','ins','claim','atty','firm','atty-phone'].forEach(f => {
+    const el = document.getElementById('pi-' + f);
+    if (el) el.value = '';
+  });
+  ['limit','lien','settlement'].forEach(f => { document.getElementById('pi-' + f).value = '0'; });
+  document.getElementById('pi-status').value = 'open';
+  document.getElementById('pi-alert').innerHTML = '';
+  openModal('pi-modal');
 }
-async function savePi(){
-  const data={patient_name:document.getElementById('pi-patient').value.trim(),date_of_accident:document.getElementById('pi-doa').value||null,accident_type:document.getElementById('pi-type').value.trim()||null,insurance_company:document.getElementById('pi-ins').value.trim()||null,claim_number:document.getElementById('pi-claim').value.trim()||null,policy_limit:parseFloat(document.getElementById('pi-limit').value)||0,attorney_name:document.getElementById('pi-atty').value.trim()||null,attorney_firm:document.getElementById('pi-firm').value.trim()||null,attorney_phone:document.getElementById('pi-atty-phone').value.trim()||null,lien_amount:parseFloat(document.getElementById('pi-lien').value)||0,settlement_amount:parseFloat(document.getElementById('pi-settlement').value)||0,case_status:document.getElementById('pi-status').value};
-  try{if(editPiId)await PUT('/api/pi-cases/'+editPiId,data);else await POST('/api/pi-cases',data);closeModal('pi-modal');loadCases();}catch(e){document.getElementById('pi-alert').innerHTML='<div class="alert alert-error">'+e.message+'</div>';}
+
+function editCase(id) {
+  const c = cases.find(x => x.id === id);
+  if (!c) return;
+  editPiId = id;
+  document.getElementById('pi-modal-title').textContent = 'Edit PI Case';
+  document.getElementById('pi-patient').value    = c.patient_name || '';
+  document.getElementById('pi-doa').value        = c.date_of_accident ? c.date_of_accident.split('T')[0] : '';
+  document.getElementById('pi-type').value       = c.accident_type || '';
+  document.getElementById('pi-ins').value        = c.insurance_company || '';
+  document.getElementById('pi-claim').value      = c.claim_number || '';
+  document.getElementById('pi-limit').value      = c.policy_limit || 0;
+  document.getElementById('pi-atty').value       = c.attorney_name || '';
+  document.getElementById('pi-firm').value       = c.attorney_firm || '';
+  document.getElementById('pi-atty-phone').value = c.attorney_phone || '';
+  document.getElementById('pi-lien').value       = c.lien_amount || 0;
+  document.getElementById('pi-settlement').value = c.settlement_amount || 0;
+  document.getElementById('pi-status').value     = c.case_status || 'open';
+  document.getElementById('pi-alert').innerHTML  = '';
+  openModal('pi-modal');
 }
-(async()=>{await requireLogin();loadCases();})();
+
+async function removeCase(id) {
+  if (!confirm('Delete this PI case? This cannot be undone.')) return;
+  try {
+    const r = await fetch('/api/pi-cases/' + id, { method: 'DELETE', credentials: 'include' });
+    if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.error || 'Delete failed'); }
+    loadCases();
+  } catch(e) { showAlert(e.message, 'error'); }
+}
+
+async function savePi() {
+  const data = {
+    patient_name:      document.getElementById('pi-patient').value.trim(),
+    date_of_accident:  document.getElementById('pi-doa').value || null,
+    accident_type:     document.getElementById('pi-type').value.trim() || null,
+    insurance_company: document.getElementById('pi-ins').value.trim() || null,
+    claim_number:      document.getElementById('pi-claim').value.trim() || null,
+    policy_limit:      parseFloat(document.getElementById('pi-limit').value) || 0,
+    attorney_name:     document.getElementById('pi-atty').value.trim() || null,
+    attorney_firm:     document.getElementById('pi-firm').value.trim() || null,
+    attorney_phone:    document.getElementById('pi-atty-phone').value.trim() || null,
+    lien_amount:       parseFloat(document.getElementById('pi-lien').value) || 0,
+    settlement_amount: parseFloat(document.getElementById('pi-settlement').value) || 0,
+    case_status:       document.getElementById('pi-status').value
+  };
+  try {
+    if (editPiId) await PUT('/api/pi-cases/' + editPiId, data);
+    else await POST('/api/pi-cases', data);
+    closeModal('pi-modal');
+    loadCases();
+  } catch(e) {
+    document.getElementById('pi-alert').innerHTML =
+      '<div class="alert alert-error">' + escHtml(e.message) + '</div>';
+  }
+}
+
+// ── Invoice Generator ────────────────────────────────────────────────────────
+
+function openInvoiceModal(id) {
+  const c = cases.find(x => x.id === id);
+  if (!c) return;
+  invoiceCaseId = id;
+  invoiceNotes  = [];
+
+  // Build summary
+  const summary = document.getElementById('inv-summary');
+  summary.innerHTML = [
+    { label: 'Patient',          value: escHtml(c.patient_name || (c.first_name ? c.first_name + ' ' + c.last_name : '—')) },
+    { label: 'Accident Date',    value: fmtDate(c.date_of_accident) },
+    { label: 'Insurance',        value: escHtml(c.insurance_company || '—') },
+    { label: 'Claim #',          value: escHtml(c.claim_number || '—') },
+    { label: 'Attorney',         value: escHtml(c.attorney_name || '—') },
+    { label: 'Lien Amount',      value: fmtMoney(c.lien_amount) },
+  ].map(f => `<div><div style="font-size:10px;text-transform:uppercase;color:#888;margin-bottom:2px;">${f.label}</div>
+    <div style="font-size:13px;font-weight:600;">${f.value}</div></div>`).join('');
+
+  // Default dates
+  const today = new Date().toISOString().split('T')[0];
+  const accDate = c.date_of_accident ? c.date_of_accident.split('T')[0]
+    : new Date(Date.now() - 365*24*60*60*1000).toISOString().split('T')[0];
+  document.getElementById('inv-start').value = accDate;
+  document.getElementById('inv-end').value   = today;
+
+  // Reset
+  document.getElementById('inv-items-wrap').innerHTML = '';
+  document.getElementById('inv-totals').style.display = 'none';
+  document.getElementById('inv-adj-row').style.display = 'none';
+  document.getElementById('inv-download-btn').disabled = true;
+  document.getElementById('inv-adjustment').value = '0';
+  document.getElementById('inv-notes').value = '';
+
+  openModal('pi-invoice-modal');
+}
+
+function closeInvoiceModal() {
+  closeModal('pi-invoice-modal');
+}
+
+async function loadInvoiceVisits() {
+  const startDate = document.getElementById('inv-start').value;
+  const endDate   = document.getElementById('inv-end').value;
+  if (!startDate || !endDate) { showAlert('Please select a date range', 'warning'); return; }
+  if (startDate > endDate)    { showAlert('Start date must be before end date', 'warning'); return; }
+
+  const c = cases.find(x => x.id === invoiceCaseId);
+  if (!c || !c.patient_id) {
+    showAlert('This case has no linked patient — please edit the case and link a patient first.', 'warning');
+    return;
+  }
+
+  const btn = document.getElementById('inv-load-btn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Loading...';
+
+  try {
+    const notes = await GET('/api/soap-notes/by-patient/' + c.patient_id);
+    const filtered = (notes || []).filter(n => {
+      const d = n.note_date ? String(n.note_date).split('T')[0]
+              : (n.created_at ? String(n.created_at).split('T')[0] : null);
+      return d && d >= startDate && d <= endDate;
+    });
+
+    invoiceNotes = filtered;
+    const wrap = document.getElementById('inv-items-wrap');
+
+    if (!filtered.length) {
+      wrap.innerHTML = '<div style="text-align:center;padding:20px;color:#888;border:1px dashed #333;border-radius:6px;margin-top:8px;">No SOAP notes found in this date range.</div>';
+      document.getElementById('inv-totals').style.display    = 'none';
+      document.getElementById('inv-adj-row').style.display   = 'none';
+      document.getElementById('inv-download-btn').disabled    = true;
+      return;
+    }
+
+    wrap.innerHTML = `
+      <div class="table-wrap" style="margin-top:8px;">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:28px;"><input type="checkbox" id="inv-select-all" checked onchange="toggleAllInvoiceRows(this)"></th>
+              <th>Date of Service</th>
+              <th>CPT Code(s)</th>
+              <th>Description</th>
+              <th style="width:70px;">Units</th>
+              <th style="width:100px;">Rate ($)</th>
+              <th style="width:90px;text-align:right;">Total</th>
+            </tr>
+          </thead>
+          <tbody id="inv-tbody">
+            ${filtered.map((n, i) => {
+              const d = n.note_date ? n.note_date.split('T')[0] : (n.created_at ? n.created_at.split('T')[0] : '');
+              const cpt  = n.cpt_codes || '';
+              const desc = getCptDesc(cpt);
+              return `<tr data-idx="${i}">
+                <td><input type="checkbox" class="inv-chk" data-idx="${i}" checked onchange="updateInvoiceTotals()"></td>
+                <td style="white-space:nowrap;font-size:13px;">${fmtDate(d)}</td>
+                <td style="font-size:12px;font-family:monospace;">${escHtml(cpt) || '—'}</td>
+                <td><input type="text" class="form-control inv-desc" data-idx="${i}"
+                  value="${escHtml(desc)}" style="min-width:180px;font-size:12px;padding:4px 8px;"></td>
+                <td><input type="number" class="form-control inv-units" data-idx="${i}"
+                  value="1" min="0.5" step="0.5" style="width:65px;font-size:12px;padding:4px 8px;"
+                  oninput="updateInvoiceTotals()"></td>
+                <td><input type="number" class="form-control inv-rate" data-idx="${i}"
+                  value="0.00" min="0" step="0.01" style="width:95px;font-size:12px;padding:4px 8px;"
+                  oninput="updateInvoiceTotals()"></td>
+                <td class="inv-row-total" data-idx="${i}" style="text-align:right;font-weight:600;font-size:13px;">$0.00</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>`;
+
+    updateInvoiceTotals();
+    document.getElementById('inv-totals').style.display    = 'block';
+    document.getElementById('inv-adj-row').style.display   = 'grid';
+    document.getElementById('inv-download-btn').disabled    = false;
+
+  } catch(e) {
+    showAlert('Failed to load visits: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🔄 Load Visits';
+  }
+}
+
+function toggleAllInvoiceRows(cb) {
+  document.querySelectorAll('.inv-chk').forEach(c => { c.checked = cb.checked; });
+  updateInvoiceTotals();
+}
+
+function updateInvoiceTotals() {
+  const rows = document.querySelectorAll('#inv-tbody tr');
+  let subtotal = 0;
+  rows.forEach(row => {
+    const checked = row.querySelector('.inv-chk')?.checked;
+    const units   = parseFloat(row.querySelector('.inv-units')?.value) || 0;
+    const rate    = parseFloat(row.querySelector('.inv-rate')?.value)  || 0;
+    const rt      = checked ? units * rate : 0;
+    subtotal += rt;
+    const cell = row.querySelector('.inv-row-total');
+    if (cell) cell.textContent = '$' + (checked ? (units * rate).toFixed(2) : '0.00');
+  });
+
+  const adj   = parseFloat(document.getElementById('inv-adjustment')?.value) || 0;
+  const total = subtotal - adj;
+
+  const el = document.getElementById('inv-totals');
+  if (!el) return;
+  el.innerHTML = `
+    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;
+                padding:12px 16px;background:#252525;border-radius:6px;border:1px solid #333;">
+      <div style="display:flex;gap:24px;font-size:13px;color:#999;">
+        <span>Subtotal:</span>
+        <span style="font-weight:600;color:#eee;min-width:90px;text-align:right;">${fmtMoney(subtotal)}</span>
+      </div>
+      ${adj > 0 ? `<div style="display:flex;gap:24px;font-size:13px;color:#999;">
+        <span>Adjustment:</span>
+        <span style="font-weight:600;color:#e74c3c;min-width:90px;text-align:right;">-${fmtMoney(adj)}</span>
+      </div>` : ''}
+      <div style="display:flex;gap:24px;font-size:16px;font-weight:700;color:#FFD700;
+                  border-top:1px solid #333;padding-top:8px;margin-top:2px;">
+        <span>TOTAL DUE:</span>
+        <span style="min-width:90px;text-align:right;">${fmtMoney(total)}</span>
+      </div>
+    </div>`;
+}
+
+async function downloadInvoicePDF() {
+  const rows = document.querySelectorAll('#inv-tbody tr');
+  const lineItems = [];
+
+  rows.forEach(row => {
+    if (!row.querySelector('.inv-chk')?.checked) return;
+    const idx  = parseInt(row.dataset.idx, 10);
+    const note = invoiceNotes[idx];
+    const d    = note?.note_date
+      ? note.note_date.split('T')[0]
+      : (note?.created_at ? note.created_at.split('T')[0] : '');
+    lineItems.push({
+      date_of_service: d,
+      cpt_codes:       note?.cpt_codes || '',
+      description:     row.querySelector('.inv-desc')?.value || '',
+      units:           parseFloat(row.querySelector('.inv-units')?.value) || 1,
+      rate:            parseFloat(row.querySelector('.inv-rate')?.value)  || 0,
+    });
+  });
+
+  if (!lineItems.length) {
+    showAlert('Please select at least one visit to include.', 'warning');
+    return;
+  }
+
+  const adjustment    = parseFloat(document.getElementById('inv-adjustment')?.value) || 0;
+  const invoice_notes = document.getElementById('inv-notes')?.value || '';
+
+  const btn = document.getElementById('inv-download-btn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Generating PDF...';
+
+  try {
+    const resp = await fetch('/api/pi-cases/' + invoiceCaseId + '/invoice', {
+      method:      'POST',
+      credentials: 'include',
+      headers:     { 'Content-Type': 'application/json' },
+      body:        JSON.stringify({ line_items: lineItems, adjustment, invoice_notes })
+    });
+
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err.error || 'Server error ' + resp.status);
+    }
+
+    const blob = await resp.blob();
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url;
+    a.download = 'PI-Invoice-Case' + invoiceCaseId + '.pdf';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showAlert('Invoice downloaded successfully!', 'success');
+
+  } catch(e) {
+    showAlert('Failed to generate invoice: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '📄 Download Invoice PDF';
+  }
+}
+
+(async () => { await requireLogin(); loadCases(); })();
 </script>
 </body>
 </html>

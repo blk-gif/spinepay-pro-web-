@@ -379,6 +379,16 @@ async function runMigrations() {
 
       CREATE INDEX IF NOT EXISTS idx_review_requests_patient ON review_requests(patient_id);
       CREATE INDEX IF NOT EXISTS idx_review_requests_status  ON review_requests(status);
+
+      CREATE TABLE IF NOT EXISTS pi_invoices (
+        id             SERIAL PRIMARY KEY,
+        pi_case_id     INTEGER REFERENCES pi_cases(id) ON DELETE SET NULL,
+        invoice_number TEXT UNIQUE,
+        generated_at   TIMESTAMPTZ DEFAULT NOW(),
+        generated_by   TEXT
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_pi_invoices_case ON pi_invoices(pi_case_id);
     `);
 
     // ── Column additions for existing databases ───────────────────────────────

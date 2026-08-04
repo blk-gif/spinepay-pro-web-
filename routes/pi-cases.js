@@ -355,7 +355,7 @@ router.post('/:id/invoice', async (req, res) => {
     doc.fontSize(9).fillColor(BLACK).font('Helvetica-Bold')
        .text('PAYMENT INSTRUCTIONS', MARGIN, y);
     y += 14;
-    doc.fontSize(9).fillColor(DARK).font('Helvetica')
+    doc.fontSize(9).fillColor(BLACK).font('Helvetica')
        .text('Please remit payment to:', MARGIN, y);
     y += 13;
     doc.fontSize(9).fillColor(BLACK).font('Helvetica-Bold')

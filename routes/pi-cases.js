@@ -5,13 +5,28 @@ const { auditLog } = require('../middleware/audit');
 const PDFDocument = require('pdfkit');
 const router = Router();
 
-// ── Helper: format a date string for PDF output ─────────────────────────────
+// ── Date helper ──────────────────────────────────────────────────────────────
+// Returns MM/DD/YYYY.  Handles both JS Date objects (from pg TIMESTAMPTZ)
+// and plain strings like '1975-03-15' (from pg DATE).
 function fmtDate(d) {
   if (!d) return '—';
-  const s = String(d).split('T')[0];
-  const date = new Date(s + 'T00:00:00');
-  if (isNaN(date.getTime())) return String(d);
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  let y, m, day;
+  if (d instanceof Date) {
+    // Use UTC accessors so the date doesn't shift due to server timezone
+    y   = d.getUTCFullYear();
+    m   = d.getUTCMonth() + 1;
+    day = d.getUTCDate();
+  } else {
+    // Grab first 10 chars: handles 'YYYY-MM-DD', 'YYYY-MM-DDTHH:…', etc.
+    const iso = String(d).slice(0, 10);
+    const parts = iso.split('-');
+    if (parts.length !== 3) return String(d);
+    y   = parseInt(parts[0], 10);
+    m   = parseInt(parts[1], 10);
+    day = parseInt(parts[2], 10);
+  }
+  if (isNaN(y) || isNaN(m) || isNaN(day)) return String(d);
+  return `${String(m).padStart(2,'0')}/${String(day).padStart(2,'0')}/${y}`;
 }
 
 router.get('/by-patient/:patientId', async (req, res) => {
@@ -113,105 +128,143 @@ router.post('/:id/invoice', async (req, res) => {
     await pool.query('UPDATE pi_invoices SET invoice_number = $1 WHERE id = $2', [invoiceNum, invId]);
     await auditLog(req, 'CREATE', 'pi_invoice', invId);
 
-    // ── PDF Generation ───────────────────────────────────────────────────────
+    // ── PDF ──────────────────────────────────────────────────────────────────
     const doc = new PDFDocument({ margin: 50, size: 'LETTER' });
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="PI-Invoice-${invoiceNum}.pdf"`);
     doc.pipe(res);
 
-    const MARGIN     = 50;
-    const PAGE_W     = 612;
-    const CONTENT_W  = PAGE_W - 2 * MARGIN;  // 512
-    const invoiceDate = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+    const MARGIN    = 50;
+    const PAGE_W    = 612;
+    const CONTENT_W = PAGE_W - 2 * MARGIN;          // 512
+    const MID       = MARGIN + Math.floor(CONTENT_W / 2); // 306 — column split
+    const LEFT_W    = MID - MARGIN - 8;              // left column text width
+    const RIGHT_W   = PAGE_W - MARGIN - MID - 4;    // right column text width
+
+    const BLACK  = '#000000';
+    const DARK   = '#222222';
+    const GRAY   = '#555555';
+    const LGRAY  = '#888888';
+    const T_RIGHT = PAGE_W - MARGIN;                // 562
+
+    const invoiceDate = new Date().toLocaleDateString('en-US',
+      { month: 'long', day: 'numeric', year: 'numeric' });
 
     // ── Practice Header ──────────────────────────────────────────────────────
-    doc.fontSize(18).fillColor('#111111').font('Helvetica-Bold')
+    doc.fontSize(18).fillColor(BLACK).font('Helvetica-Bold')
        .text('WALDEN BAILEY CHIROPRACTIC', MARGIN, MARGIN);
-    doc.fontSize(9).fillColor('#555555').font('Helvetica')
-       .text('1086 Walden Ave Suite 1  \u2022  Buffalo, NY 14211  \u2022  (716) 893-9200', MARGIN, MARGIN + 24);
+    doc.fontSize(9).fillColor(GRAY).font('Helvetica')
+       .text('1086 Walden Ave Suite 1  \u2022  Buffalo, NY 14211  \u2022  (716) 893-9200',
+             MARGIN, MARGIN + 23);
 
-    // Invoice label — top right
-    doc.fontSize(26).fillColor('#111111').font('Helvetica-Bold')
+    // INVOICE label — top right (same baseline as practice name)
+    doc.fontSize(26).fillColor(BLACK).font('Helvetica-Bold')
        .text('INVOICE', MARGIN, MARGIN, { width: CONTENT_W, align: 'right' });
-    doc.fontSize(9).fillColor('#555555').font('Helvetica')
-       .text(`Invoice #: ${invoiceNum}`, MARGIN, MARGIN + 30, { width: CONTENT_W, align: 'right' });
+    doc.fontSize(9).fillColor(DARK).font('Helvetica')
+       .text(`Invoice #: ${invoiceNum}`, MARGIN, MARGIN + 30,
+             { width: CONTENT_W, align: 'right' });
     doc.fontSize(9)
-       .text(`Date: ${invoiceDate}`, MARGIN, MARGIN + 44, { width: CONTENT_W, align: 'right' });
+       .text(`Date: ${invoiceDate}`, MARGIN, MARGIN + 43,
+             { width: CONTENT_W, align: 'right' });
 
-    // Gold separator line
-    const sepY = MARGIN + 62;
-    doc.moveTo(MARGIN, sepY).lineTo(PAGE_W - MARGIN, sepY)
-       .strokeColor('#B8960C').lineWidth(2).stroke();
+    // Solid black separator
+    const SEP1 = MARGIN + 60;
+    doc.moveTo(MARGIN, SEP1).lineTo(T_RIGHT, SEP1)
+       .strokeColor(BLACK).lineWidth(1.5).stroke();
 
-    // ── Billed To / Patient columns ──────────────────────────────────────────
-    let y     = sepY + 16;
-    const COL2 = MARGIN + Math.floor(CONTENT_W / 2);
+    // ── Info Block ────────────────────────────────────────────────────────────
+    // Two columns, fixed widths, lineBreak:false everywhere to prevent overlap.
+    let leftY  = SEP1 + 14;
+    let rightY = SEP1 + 14;
 
-    // LEFT — Billed To (insurance)
-    doc.fontSize(8).fillColor('#888888').font('Helvetica-Bold').text('BILLED TO', MARGIN, y);
-    y += 13;
-    doc.fontSize(10).fillColor('#111111').font('Helvetica-Bold')
-       .text(c.insurance_company || 'Insurance Company', MARGIN, y, { width: COL2 - MARGIN - 10 });
-    y += 14;
+    // LEFT — Billed To
+    doc.fontSize(7).fillColor(LGRAY).font('Helvetica-Bold')
+       .text('BILLED TO', MARGIN, leftY, { width: LEFT_W, lineBreak: false });
+    leftY += 11;
+    doc.fontSize(10).fillColor(BLACK).font('Helvetica-Bold')
+       .text(String(c.insurance_company || 'Insurance Company').slice(0, 35),
+             MARGIN, leftY, { width: LEFT_W, lineBreak: false });
+    leftY += 14;
+
+    doc.fontSize(9).fillColor(DARK).font('Helvetica');
     if (c.claim_number) {
-      doc.fontSize(9).fillColor('#444444').font('Helvetica')
-         .text(`Claim #: ${c.claim_number}`, MARGIN, y); y += 13;
+      doc.text(`Claim #: ${c.claim_number}`.slice(0, 38),
+               MARGIN, leftY, { width: LEFT_W, lineBreak: false });
+      leftY += 13;
     }
     if (c.adjuster_name) {
-      doc.fontSize(9).fillColor('#444444').font('Helvetica')
-         .text(`Adjuster: ${c.adjuster_name}`, MARGIN, y); y += 13;
+      doc.text(`Adjuster: ${c.adjuster_name}`.slice(0, 38),
+               MARGIN, leftY, { width: LEFT_W, lineBreak: false });
+      leftY += 13;
     }
     if (c.adjuster_phone) {
-      doc.fontSize(9).fillColor('#444444').font('Helvetica')
-         .text(`Adjuster Phone: ${c.adjuster_phone}`, MARGIN, y); y += 13;
+      doc.text(`Adjuster Ph: ${c.adjuster_phone}`.slice(0, 38),
+               MARGIN, leftY, { width: LEFT_W, lineBreak: false });
+      leftY += 13;
     }
 
-    // RIGHT — Patient info (aligned to col2, same top as "BILLED TO")
-    const patY = sepY + 16;
-    doc.fontSize(8).fillColor('#888888').font('Helvetica-Bold').text('PATIENT', COL2, patY);
+    // RIGHT — Patient & Case
+    doc.fontSize(7).fillColor(LGRAY).font('Helvetica-Bold')
+       .text('PATIENT', MID, rightY, { width: RIGHT_W, lineBreak: false });
+    rightY += 11;
+
     const patName = (c.first_name && c.last_name)
       ? `${c.first_name} ${c.last_name}`
       : (c.patient_name || '\u2014');
-    doc.fontSize(10).fillColor('#111111').font('Helvetica-Bold').text(patName, COL2, patY + 13);
-    let patInfoY = patY + 27;
-    doc.fontSize(9).fillColor('#444444').font('Helvetica');
+    doc.fontSize(10).fillColor(BLACK).font('Helvetica-Bold')
+       .text(patName.slice(0, 35), MID, rightY, { width: RIGHT_W, lineBreak: false });
+    rightY += 14;
+
+    doc.fontSize(9).fillColor(DARK).font('Helvetica');
     if (c.dob) {
-      doc.text(`DOB: ${fmtDate(c.dob)}`, COL2, patInfoY); patInfoY += 13;
+      doc.text(`DOB: ${fmtDate(c.dob)}`,
+               MID, rightY, { width: RIGHT_W, lineBreak: false });
+      rightY += 13;
     }
-    doc.text(`Accident Date: ${fmtDate(c.date_of_accident)}`, COL2, patInfoY); patInfoY += 13;
+    doc.text(`Accident Date: ${fmtDate(c.date_of_accident)}`,
+             MID, rightY, { width: RIGHT_W, lineBreak: false });
+    rightY += 13;
+
     if (c.attorney_name) {
-      const attyLine = c.attorney_firm
-        ? `${c.attorney_name} \u2014 ${c.attorney_firm}`
-        : c.attorney_name;
-      doc.text(`Attorney: ${attyLine}`, COL2, patInfoY); patInfoY += 13;
+      // Truncate to avoid wrapping
+      const attyFirm = c.attorney_firm ? ` / ${c.attorney_firm}` : '';
+      const attyLine = `${c.attorney_name}${attyFirm}`.slice(0, 42);
+      doc.text(`Atty: ${attyLine}`,
+               MID, rightY, { width: RIGHT_W, lineBreak: false });
+      rightY += 13;
     }
     if (c.policy_limit && parseFloat(c.policy_limit) > 0) {
-      doc.text(`Policy Limit: $${parseFloat(c.policy_limit).toFixed(2)}`, COL2, patInfoY); patInfoY += 13;
+      doc.text(`Policy Limit: $${parseFloat(c.policy_limit).toFixed(2)}`,
+               MID, rightY, { width: RIGHT_W, lineBreak: false });
+      rightY += 13;
     }
 
-    y = Math.max(y, patInfoY) + 16;
+    // Second separator — below whichever column is taller
+    let y = Math.max(leftY, rightY) + 10;
+    doc.moveTo(MARGIN, y).lineTo(T_RIGHT, y)
+       .strokeColor(BLACK).lineWidth(0.75).stroke();
+    y += 14;
 
-    // ── Services Table ───────────────────────────────────────────────────────
-    // Column x-positions (total content width = 512)
-    const T_DATE  = MARGIN;        // width 85
-    const T_CPT   = MARGIN + 90;   // width 70
-    const T_DESC  = MARGIN + 165;  // width 185
-    const T_UNITS = MARGIN + 355;  // width 40
-    const T_RATE  = MARGIN + 400;  // width 62
-    const T_TOTAL = MARGIN + 467;  // width ~45, right edge = MARGIN+512=562
+    // ── Services Table ────────────────────────────────────────────────────────
+    // Column x-positions
+    const T_DATE  = MARGIN;       // 85 wide
+    const T_CPT   = MARGIN + 90;  // 68 wide
+    const T_DESC  = MARGIN + 163; // 186 wide
+    const T_UNITS = MARGIN + 354; // 40 wide
+    const T_RATE  = MARGIN + 399; // 62 wide
+    const T_TOTAL = MARGIN + 466; // to T_RIGHT = 562 → 96 wide
 
-    const T_RIGHT = PAGE_W - MARGIN; // 562
-
-    // Header row
-    doc.rect(MARGIN, y, CONTENT_W, 20).fillColor('#EEEEEE').fill();
-    doc.fontSize(8).fillColor('#333333').font('Helvetica-Bold');
-    doc.text('DATE',        T_DATE,  y + 6, { width: 85 });
-    doc.text('CPT CODE',    T_CPT,   y + 6, { width: 70 });
-    doc.text('DESCRIPTION', T_DESC,  y + 6, { width: 185 });
-    doc.text('UNITS',  T_UNITS, y + 6, { width: 40,  align: 'center' });
-    doc.text('RATE',   T_RATE,  y + 6, { width: 62,  align: 'right'  });
-    doc.text('TOTAL',  T_TOTAL, y + 6, { width: T_RIGHT - T_TOTAL, align: 'right' });
-    y += 20;
+    // Table header — bold text only, thick bottom rule
+    doc.fontSize(8).fillColor(BLACK).font('Helvetica-Bold');
+    doc.text('DATE OF SERVICE', T_DATE,  y, { width: 85,  lineBreak: false });
+    doc.text('CPT CODE',        T_CPT,   y, { width: 68,  lineBreak: false });
+    doc.text('DESCRIPTION',     T_DESC,  y, { width: 186, lineBreak: false });
+    doc.text('UNITS',           T_UNITS, y, { width: 40,  align: 'center', lineBreak: false });
+    doc.text('RATE',            T_RATE,  y, { width: 62,  align: 'right',  lineBreak: false });
+    doc.text('TOTAL',           T_TOTAL, y, { width: T_RIGHT - T_TOTAL, align: 'right', lineBreak: false });
+    y += 13;
+    doc.moveTo(MARGIN, y).lineTo(T_RIGHT, y).strokeColor(BLACK).lineWidth(0.75).stroke();
+    y += 6;
 
     // Data rows
     let subtotal = 0;
@@ -222,100 +275,110 @@ router.post('/:id/invoice', async (req, res) => {
       const rowTotal = units * rate;
       subtotal += rowTotal;
 
-      doc.rect(MARGIN, y, CONTENT_W, 18)
-         .fillColor(i % 2 === 0 ? '#FFFFFF' : '#F8F8F8').fill();
+      doc.fontSize(8).fillColor(DARK).font('Helvetica');
+      doc.text(fmtDate(item.date_of_service),
+               T_DATE,  y, { width: 85,  lineBreak: false });
+      doc.text(String(item.cpt_codes  || '\u2014').slice(0, 18),
+               T_CPT,   y, { width: 68,  lineBreak: false });
+      doc.text(String(item.description || '\u2014').slice(0, 42),
+               T_DESC,  y, { width: 186, lineBreak: false });
+      doc.text(String(units),
+               T_UNITS, y, { width: 40,  align: 'center', lineBreak: false });
+      doc.text(`$${rate.toFixed(2)}`,
+               T_RATE,  y, { width: 62,  align: 'right',  lineBreak: false });
+      doc.text(`$${rowTotal.toFixed(2)}`,
+               T_TOTAL, y, { width: T_RIGHT - T_TOTAL, align: 'right', lineBreak: false });
+      y += 16;
 
-      doc.fontSize(8).fillColor('#222222').font('Helvetica');
-      doc.text(fmtDate(item.date_of_service),                  T_DATE,  y + 5, { width: 85, lineBreak: false });
-      doc.text(String(item.cpt_codes  || '\u2014').slice(0, 20), T_CPT,   y + 5, { width: 70, lineBreak: false });
-      doc.text(String(item.description || '\u2014').slice(0, 42),T_DESC,  y + 5, { width: 185, lineBreak: false });
-      doc.text(String(units),                                  T_UNITS, y + 5, { width: 40,  align: 'center' });
-      doc.text(`$${rate.toFixed(2)}`,                          T_RATE,  y + 5, { width: 62,  align: 'right'  });
-      doc.text(`$${rowTotal.toFixed(2)}`,                      T_TOTAL, y + 5, { width: T_RIGHT - T_TOTAL, align: 'right' });
-      y += 18;
+      // Light row divider
+      doc.moveTo(MARGIN, y - 3).lineTo(T_RIGHT, y - 3)
+         .strokeColor('#CCCCCC').lineWidth(0.3).stroke();
     });
 
-    // Bottom border of table
-    doc.moveTo(MARGIN, y).lineTo(T_RIGHT, y).strokeColor('#CCCCCC').lineWidth(0.5).stroke();
+    // Bottom table border
+    doc.moveTo(MARGIN, y).lineTo(T_RIGHT, y).strokeColor(BLACK).lineWidth(0.75).stroke();
     y += 12;
 
-    // ── Totals Block ─────────────────────────────────────────────────────────
+    // ── Totals ────────────────────────────────────────────────────────────────
     const adj   = parseFloat(adjustment) || 0;
     const total = subtotal - adj;
 
-    const TOT_LBL = T_RATE - 30;
+    const TOT_LBL = T_RATE - 20;
     const TOT_VAL = T_TOTAL;
     const TOT_W   = T_RIGHT - T_TOTAL;
 
-    doc.fontSize(9).fillColor('#666666').font('Helvetica')
-       .text('Subtotal:', TOT_LBL, y, { width: 90, align: 'right' });
-    doc.fillColor('#111111')
+    doc.fontSize(9).fillColor(GRAY).font('Helvetica')
+       .text('Subtotal:', TOT_LBL, y, { width: 82, align: 'right' });
+    doc.fillColor(BLACK)
        .text(`$${subtotal.toFixed(2)}`, TOT_VAL, y, { width: TOT_W, align: 'right' });
     y += 14;
 
     if (adj > 0) {
-      doc.fontSize(9).fillColor('#666666').font('Helvetica')
-         .text('Adjustment:', TOT_LBL, y, { width: 90, align: 'right' });
-      doc.fillColor('#111111')
+      doc.fontSize(9).fillColor(GRAY).font('Helvetica')
+         .text('Adjustment:', TOT_LBL, y, { width: 82, align: 'right' });
+      doc.fillColor(BLACK)
          .text(`-$${adj.toFixed(2)}`, TOT_VAL, y, { width: TOT_W, align: 'right' });
       y += 14;
     }
 
-    // Total Due dark box
-    doc.rect(TOT_LBL - 4, y - 3, T_RIGHT - (TOT_LBL - 4), 24).fillColor('#1a1a1a').fill();
-    doc.fontSize(11).fillColor('#FFD700').font('Helvetica-Bold')
-       .text('TOTAL DUE:', TOT_LBL, y + 3, { width: 90, align: 'right' });
-    doc.fillColor('#FFD700')
-       .text(`$${total.toFixed(2)}`, TOT_VAL, y + 3, { width: TOT_W, align: 'right' });
-    y += 32;
+    // Total Due — bordered box, all black
+    const boxX = TOT_LBL - 6;
+    const boxW = T_RIGHT - boxX;
+    doc.rect(boxX, y - 2, boxW, 20).strokeColor(BLACK).lineWidth(1).stroke();
+    doc.fontSize(10).fillColor(BLACK).font('Helvetica-Bold')
+       .text('TOTAL DUE:', TOT_LBL, y + 2, { width: 82, align: 'right' });
+    doc.fillColor(BLACK)
+       .text(`$${total.toFixed(2)}`, TOT_VAL, y + 2, { width: TOT_W, align: 'right' });
+    y += 28;
 
-    // Lien amount notice
+    // Lien amount
     if (c.lien_amount && parseFloat(c.lien_amount) > 0) {
-      doc.fontSize(9).fillColor('#444444').font('Helvetica')
+      doc.fontSize(9).fillColor(DARK).font('Helvetica')
          .text(`Medical Lien Amount: $${parseFloat(c.lien_amount).toFixed(2)}`, MARGIN, y);
       y += 14;
     }
 
-    // Optional invoice notes
+    // Invoice notes
     if (invoice_notes && String(invoice_notes).trim()) {
-      doc.fontSize(9).fillColor('#444444').font('Helvetica')
+      doc.fontSize(9).fillColor(DARK).font('Helvetica')
          .text(`Notes: ${String(invoice_notes).trim()}`, MARGIN, y);
       y += 14;
     }
 
-    y += 16;
-
-    // ── Payment Instructions ─────────────────────────────────────────────────
-    doc.moveTo(MARGIN, y).lineTo(T_RIGHT, y).strokeColor('#CCCCCC').lineWidth(0.5).stroke();
     y += 14;
 
-    doc.fontSize(10).fillColor('#111111').font('Helvetica-Bold')
+    // ── Payment Instructions ──────────────────────────────────────────────────
+    doc.moveTo(MARGIN, y).lineTo(T_RIGHT, y)
+       .strokeColor(BLACK).lineWidth(0.75).stroke();
+    y += 14;
+
+    doc.fontSize(9).fillColor(BLACK).font('Helvetica-Bold')
        .text('PAYMENT INSTRUCTIONS', MARGIN, y);
-    y += 16;
-
-    doc.fontSize(9).fillColor('#333333').font('Helvetica')
-       .text('Please remit payment to:', MARGIN, y);
     y += 14;
-    doc.fontSize(9).fillColor('#111111').font('Helvetica-Bold')
+    doc.fontSize(9).fillColor(DARK).font('Helvetica')
+       .text('Please remit payment to:', MARGIN, y);
+    y += 13;
+    doc.fontSize(9).fillColor(BLACK).font('Helvetica-Bold')
        .text('Walden Bailey Chiropractic', MARGIN, y);
-    y += 13;
-    doc.fontSize(9).fillColor('#555555').font('Helvetica')
+    y += 12;
+    doc.fontSize(9).fillColor(DARK).font('Helvetica')
        .text('1086 Walden Ave Suite 1, Buffalo, NY 14211', MARGIN, y);
-    y += 13;
+    y += 12;
     doc.text('(716) 893-9200', MARGIN, y);
 
-    y += 44;
+    y += 40;
 
-    // ── Provider Signature Lines ──────────────────────────────────────────────
-    doc.moveTo(MARGIN, y).lineTo(MARGIN + 220, y).strokeColor('#333333').lineWidth(0.5).stroke();
-    doc.moveTo(MARGIN + 280, y).lineTo(MARGIN + 430, y).strokeColor('#333333').lineWidth(0.5).stroke();
-
+    // ── Signature Lines ───────────────────────────────────────────────────────
+    doc.moveTo(MARGIN, y).lineTo(MARGIN + 220, y)
+       .strokeColor(BLACK).lineWidth(0.5).stroke();
+    doc.moveTo(MARGIN + 280, y).lineTo(MARGIN + 430, y)
+       .strokeColor(BLACK).lineWidth(0.5).stroke();
     y += 5;
-    doc.fontSize(8).fillColor('#888888').font('Helvetica')
+    doc.fontSize(8).fillColor(LGRAY).font('Helvetica')
        .text('Provider Signature', MARGIN, y)
        .text('Date', MARGIN + 280, y);
-    y += 14;
-    doc.fontSize(8).fillColor('#333333').font('Helvetica')
+    y += 13;
+    doc.fontSize(8).fillColor(DARK).font('Helvetica')
        .text('Dr. Walden Bailey, D.C.', MARGIN, y);
 
     doc.end();

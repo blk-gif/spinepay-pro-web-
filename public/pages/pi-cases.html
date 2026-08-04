@@ -51,9 +51,6 @@
     <div class="form-row">
       <div class="form-group">
         <label>Patient <span style="color:#e74c3c">*</span></label>
-        <input type="text" id="pi-patient-search" class="form-control"
-          placeholder="Type to filter patients..." oninput="filterPatients()"
-          autocomplete="off" style="margin-bottom:4px;">
         <select id="pi-patient-id" class="form-control">
           <option value="">— Select patient —</option>
         </select>
@@ -159,25 +156,17 @@ let cases = [], allPatients = [], editPiId = null, invoiceCaseId = null, invoice
 
 async function loadPatients() {
   allPatients = await GET('/api/patients').catch(() => []);
-  renderPatientOptions('');
+  renderPatientOptions();
 }
 
-function renderPatientOptions(filter) {
+function renderPatientOptions() {
   const sel = document.getElementById('pi-patient-id');
   if (!sel) return;
-  const q = filter.toLowerCase();
-  const filtered = q
-    ? allPatients.filter(p => (p.last_name + ' ' + p.first_name).toLowerCase().includes(q))
-    : allPatients;
-  const sorted = [...filtered].sort((a, b) => a.last_name.localeCompare(b.last_name));
+  const sorted = [...allPatients].sort((a, b) => a.last_name.localeCompare(b.last_name));
   const current = sel.value;
   sel.innerHTML = '<option value="">— Select patient —</option>' +
     sorted.map(p => `<option value="${p.id}">${escHtml(p.last_name)}, ${escHtml(p.first_name)}</option>`).join('');
-  if (current) sel.value = current; // preserve selection across filter changes
-}
-
-function filterPatients() {
-  renderPatientOptions(document.getElementById('pi-patient-search').value);
+  if (current) sel.value = current;
 }
 
 const CPT_LABELS = {
@@ -231,8 +220,7 @@ async function loadCases() {
 function openPiModal() {
   editPiId = null;
   document.getElementById('pi-modal-title').textContent = 'New PI Case';
-  document.getElementById('pi-patient-search').value = '';
-  renderPatientOptions('');
+  renderPatientOptions();
   document.getElementById('pi-patient-id').value = '';
   ['doa','type','ins','claim','atty','firm','atty-phone'].forEach(f => {
     const el = document.getElementById('pi-' + f);
@@ -249,8 +237,7 @@ function editCase(id) {
   if (!c) return;
   editPiId = id;
   document.getElementById('pi-modal-title').textContent = 'Edit PI Case';
-  document.getElementById('pi-patient-search').value = '';
-  renderPatientOptions('');
+  renderPatientOptions();
   document.getElementById('pi-patient-id').value = c.patient_id || '';
   document.getElementById('pi-doa').value        = c.date_of_accident ? c.date_of_accident.split('T')[0] : '';
   document.getElementById('pi-type').value       = c.accident_type || '';

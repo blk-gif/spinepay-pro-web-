@@ -142,9 +142,12 @@ router.post('/:id/invoice', async (req, res) => {
     const RIGHT_W   = PAGE_W - MARGIN - MID - 4;    // right column text width
 
     const BLACK  = '#000000';
-    const DARK   = '#222222';
     const GRAY   = '#555555';
     const LGRAY  = '#888888';
+
+    function fmtCurrency(n) {
+      return '$' + parseFloat(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
     const T_RIGHT = PAGE_W - MARGIN;                // 562
 
     const invoiceDate = new Date().toLocaleDateString('en-US',
@@ -160,7 +163,7 @@ router.post('/:id/invoice', async (req, res) => {
     // INVOICE label — top right (same baseline as practice name)
     doc.fontSize(26).fillColor(BLACK).font('Helvetica-Bold')
        .text('INVOICE', MARGIN, MARGIN, { width: CONTENT_W, align: 'right' });
-    doc.fontSize(9).fillColor(DARK).font('Helvetica')
+    doc.fontSize(9).fillColor(BLACK).font('Helvetica')
        .text(`Invoice #: ${invoiceNum}`, MARGIN, MARGIN + 30,
              { width: CONTENT_W, align: 'right' });
     doc.fontSize(9)
@@ -186,7 +189,7 @@ router.post('/:id/invoice', async (req, res) => {
              MARGIN, leftY, { width: LEFT_W, lineBreak: false });
     leftY += 14;
 
-    doc.fontSize(9).fillColor(DARK).font('Helvetica');
+    doc.fontSize(9).fillColor(BLACK).font('Helvetica');
     if (c.claim_number) {
       doc.text(`Claim #: ${c.claim_number}`.slice(0, 38),
                MARGIN, leftY, { width: LEFT_W, lineBreak: false });
@@ -215,7 +218,7 @@ router.post('/:id/invoice', async (req, res) => {
        .text(patName.slice(0, 35), MID, rightY, { width: RIGHT_W, lineBreak: false });
     rightY += 14;
 
-    doc.fontSize(9).fillColor(DARK).font('Helvetica');
+    doc.fontSize(9).fillColor(BLACK).font('Helvetica');
     if (c.dob) {
       doc.text(`DOB: ${fmtDate(c.dob)}`,
                MID, rightY, { width: RIGHT_W, lineBreak: false });
@@ -234,7 +237,7 @@ router.post('/:id/invoice', async (req, res) => {
       rightY += 13;
     }
     if (c.policy_limit && parseFloat(c.policy_limit) > 0) {
-      doc.text(`Policy Limit: $${parseFloat(c.policy_limit).toFixed(2)}`,
+      doc.text(`Policy Limit: ${fmtCurrency(c.policy_limit)}`,
                MID, rightY, { width: RIGHT_W, lineBreak: false });
       rightY += 13;
     }
@@ -275,7 +278,7 @@ router.post('/:id/invoice', async (req, res) => {
       const rowTotal = units * rate;
       subtotal += rowTotal;
 
-      doc.fontSize(8).fillColor(DARK).font('Helvetica');
+      doc.fontSize(8).fillColor(BLACK).font('Helvetica');
       doc.text(fmtDate(item.date_of_service),
                T_DATE,  y, { width: 85,  lineBreak: false });
       doc.text(String(item.cpt_codes  || '\u2014').slice(0, 18),
@@ -284,9 +287,9 @@ router.post('/:id/invoice', async (req, res) => {
                T_DESC,  y, { width: 186, lineBreak: false });
       doc.text(String(units),
                T_UNITS, y, { width: 40,  align: 'center', lineBreak: false });
-      doc.text(`$${rate.toFixed(2)}`,
+      doc.text(fmtCurrency(rate),
                T_RATE,  y, { width: 62,  align: 'right',  lineBreak: false });
-      doc.text(`$${rowTotal.toFixed(2)}`,
+      doc.text(fmtCurrency(rowTotal),
                T_TOTAL, y, { width: T_RIGHT - T_TOTAL, align: 'right', lineBreak: false });
       y += 16;
 
@@ -303,44 +306,46 @@ router.post('/:id/invoice', async (req, res) => {
     const adj   = parseFloat(adjustment) || 0;
     const total = subtotal - adj;
 
-    const TOT_LBL = T_RATE - 20;
-    const TOT_VAL = T_TOTAL;
-    const TOT_W   = T_RIGHT - T_TOTAL;
+    // Totals layout: label takes left portion, value takes right 110pts
+    const TVAL_W  = 110;                     // wide enough for any dollar amount
+    const TVAL_X  = T_RIGHT - TVAL_W;        // value left edge
+    const TLBL_W  = TVAL_X - MARGIN - 10;   // label fills remaining space
+    const TLBL_X  = MARGIN;                  // label right-aligns into TLBL_W
 
     doc.fontSize(9).fillColor(GRAY).font('Helvetica')
-       .text('Subtotal:', TOT_LBL, y, { width: 82, align: 'right' });
+       .text('Subtotal:', TLBL_X, y, { width: TLBL_W, align: 'right' });
     doc.fillColor(BLACK)
-       .text(`$${subtotal.toFixed(2)}`, TOT_VAL, y, { width: TOT_W, align: 'right' });
+       .text(fmtCurrency(subtotal), TVAL_X, y, { width: TVAL_W, align: 'right' });
     y += 14;
 
     if (adj > 0) {
       doc.fontSize(9).fillColor(GRAY).font('Helvetica')
-         .text('Adjustment:', TOT_LBL, y, { width: 82, align: 'right' });
+         .text('Adjustment:', TLBL_X, y, { width: TLBL_W, align: 'right' });
       doc.fillColor(BLACK)
-         .text(`-$${adj.toFixed(2)}`, TOT_VAL, y, { width: TOT_W, align: 'right' });
+         .text(`-${fmtCurrency(adj)}`, TVAL_X, y, { width: TVAL_W, align: 'right' });
       y += 14;
     }
 
     // Total Due — bordered box, all black
-    const boxX = TOT_LBL - 6;
+    const boxX = T_RIGHT - TVAL_W - 100;    // box starts left of label
     const boxW = T_RIGHT - boxX;
     doc.rect(boxX, y - 2, boxW, 20).strokeColor(BLACK).lineWidth(1).stroke();
     doc.fontSize(10).fillColor(BLACK).font('Helvetica-Bold')
-       .text('TOTAL DUE:', TOT_LBL, y + 2, { width: 82, align: 'right' });
+       .text('TOTAL DUE:', boxX + 4, y + 2, { width: boxW - TVAL_W - 8, align: 'right' });
     doc.fillColor(BLACK)
-       .text(`$${total.toFixed(2)}`, TOT_VAL, y + 2, { width: TOT_W, align: 'right' });
+       .text(fmtCurrency(total), TVAL_X, y + 2, { width: TVAL_W, align: 'right' });
     y += 28;
 
     // Lien amount
     if (c.lien_amount && parseFloat(c.lien_amount) > 0) {
-      doc.fontSize(9).fillColor(DARK).font('Helvetica')
-         .text(`Medical Lien Amount: $${parseFloat(c.lien_amount).toFixed(2)}`, MARGIN, y);
+      doc.fontSize(9).fillColor(BLACK).font('Helvetica')
+         .text(`Medical Lien Amount: ${fmtCurrency(c.lien_amount)}`, MARGIN, y);
       y += 14;
     }
 
     // Invoice notes
     if (invoice_notes && String(invoice_notes).trim()) {
-      doc.fontSize(9).fillColor(DARK).font('Helvetica')
+      doc.fontSize(9).fillColor(BLACK).font('Helvetica')
          .text(`Notes: ${String(invoice_notes).trim()}`, MARGIN, y);
       y += 14;
     }
@@ -361,7 +366,7 @@ router.post('/:id/invoice', async (req, res) => {
     doc.fontSize(9).fillColor(BLACK).font('Helvetica-Bold')
        .text('Walden Bailey Chiropractic', MARGIN, y);
     y += 12;
-    doc.fontSize(9).fillColor(DARK).font('Helvetica')
+    doc.fontSize(9).fillColor(BLACK).font('Helvetica')
        .text('1086 Walden Ave Suite 1, Buffalo, NY 14211', MARGIN, y);
     y += 12;
     doc.text('(716) 893-9200', MARGIN, y);
@@ -378,7 +383,7 @@ router.post('/:id/invoice', async (req, res) => {
        .text('Provider Signature', MARGIN, y)
        .text('Date', MARGIN + 280, y);
     y += 13;
-    doc.fontSize(8).fillColor(DARK).font('Helvetica')
+    doc.fontSize(8).fillColor(BLACK).font('Helvetica')
        .text('Dr. Walden Bailey, D.C.', MARGIN, y);
 
     doc.end();

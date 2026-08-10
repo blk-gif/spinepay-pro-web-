@@ -158,6 +158,7 @@ router.put('/eob/:id', async (req, res) => {
 
 router.get('/revenue', async (req, res) => {
   try {
+    if (req.session.staff.role !== 'admin') return res.status(403).json({ error: 'Admin required' });
     const { start, end } = req.query;
     const s = start || new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
     const e = end || new Date().toISOString().split('T')[0];

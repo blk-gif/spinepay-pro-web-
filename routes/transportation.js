@@ -1,6 +1,7 @@
 'use strict';
 const { Router } = require('express');
 const { pool } = require('../db/pool');
+const { auditLog } = require('../middleware/audit');
 const router = Router();
 
 router.get('/by-patient/:patientId', async (req, res) => {
@@ -48,7 +49,9 @@ router.put('/:id', async (req, res) => {
 
 router.delete('/:id', async (req, res) => {
   try {
+    if (req.session.staff.role !== 'admin') return res.status(403).json({ error: 'Admin required' });
     await pool.query('DELETE FROM transportation WHERE id = $1', [req.params.id]);
+    await auditLog(req, 'DELETE', 'transportation', req.params.id);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

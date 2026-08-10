@@ -13,7 +13,8 @@ https://github.com/blk-gif/spinepay-pro-web-
 - bcrypt for passwords
 - helmet + express-rate-limit
 - @aws-sdk/client-s3 + multer for document storage
-- @sendgrid/mail for email
+- @sendgrid/mail for email (legacy; being migrated)
+- Paubox Email API (HIPAA-compliant, BAA in place) via native fetch — services/mail.js; requires PAUBOX_API_KEY + PAUBOX_SENDER_EMAIL env vars
 - Chart.js for revenue charts
 
 ## Key Files

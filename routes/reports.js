@@ -5,6 +5,7 @@ const router = Router();
 
 router.get('/revenue-summary', async (req, res) => {
   try {
+    if (req.session.staff.role !== 'admin') return res.status(403).json({ error: 'Admin required' });
     const { startDate, start, endDate, end } = req.query;
     const s = startDate || start || new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
     const e = endDate || end || new Date().toISOString().split('T')[0];

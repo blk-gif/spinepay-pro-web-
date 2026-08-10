@@ -42,13 +42,16 @@ router.patch('/:id/status', async (req, res) => {
     const { status } = req.body;
     const sent_date = status === 'sent' ? new Date().toISOString().split('T')[0] : null;
     await pool.query('UPDATE referrals SET status=$1, sent_date=COALESCE($2::date, sent_date) WHERE id=$3', [status, sent_date, req.params.id]);
+    await auditLog(req, 'UPDATE', 'referral', req.params.id);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 router.delete('/:id', async (req, res) => {
   try {
+    if (req.session.staff.role !== 'admin') return res.status(403).json({ error: 'Admin required' });
     await pool.query('DELETE FROM referrals WHERE id = $1', [req.params.id]);
+    await auditLog(req, 'DELETE', 'referral', req.params.id);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

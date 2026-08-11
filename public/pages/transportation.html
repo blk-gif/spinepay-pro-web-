@@ -4,6 +4,15 @@
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Transportation — SpinePay Pro</title>
   <link rel="stylesheet" href="/css/style.css">
+  <style>
+    .patient-suggestions{position:fixed;z-index:9999;background:var(--bg2);border:1px solid var(--border);border-radius:0 0 6px 6px;max-height:200px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,0.4);}
+    .patient-suggestions.hidden{display:none;}
+    .patient-suggestion-item{padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid var(--border);}
+    .patient-suggestion-item:last-child{border-bottom:none;}
+    .patient-suggestion-item:hover{background:var(--bg3);color:var(--gold);}
+    .patient-no-match{padding:8px 12px;font-size:12px;color:var(--text-muted);font-style:italic;}
+    .alert-warning{background:rgba(255,183,18,0.12);border:1px solid rgba(255,183,18,0.4);color:#FFD700;border-radius:6px;padding:8px 12px;font-size:13px;margin-bottom:8px;}
+  </style>
 </head>
 <body>
 <div id="app">
@@ -27,7 +36,7 @@
     <div class="modal-header"><span class="modal-title">New Transport Request</span><button class="modal-close" onclick="closeModal('trans-modal')">×</button></div>
     <div id="trans-alert"></div>
     <div class="form-row">
-      <div class="form-group"><label>Patient Name</label><input id="tr-patient" type="text"></div>
+      <div class="form-group"><label>Patient Name</label><input id="tr-patient" type="text" autocomplete="off"><input type="hidden" id="tr-patient-id"></div>
       <div class="form-group"><label>Pickup Time</label><input id="tr-time" type="datetime-local"></div>
     </div>
     <div class="form-group"><label>Pickup Address</label><input id="tr-pickup" type="text"></div>
@@ -43,9 +52,47 @@
     </div>
   </div>
 </div>
+<div id="tr-patient-suggestions" class="patient-suggestions hidden"></div>
 <script src="/js/layout.js"></script>
 <script>
 let transports = [], editTransId = null;
+
+let _trPatientTimer = null;
+document.getElementById('tr-patient').addEventListener('input', function () {
+  document.getElementById('tr-patient-id').value = '';
+  clearTimeout(_trPatientTimer);
+  const q = this.value.trim();
+  if (q.length < 2) { hideTrPtSuggestions(); return; }
+  _trPatientTimer = setTimeout(async () => {
+    try { showTrPtSuggestions(await GET('/api/patients?search=' + encodeURIComponent(q))); }
+    catch (_) { hideTrPtSuggestions(); }
+  }, 300);
+});
+document.addEventListener('click', function (e) {
+  if (!e.target.closest('#tr-patient') && !e.target.closest('#tr-patient-suggestions')) hideTrPtSuggestions();
+});
+function showTrPtSuggestions(patients) {
+  const input = document.getElementById('tr-patient');
+  const box   = document.getElementById('tr-patient-suggestions');
+  const rect  = input.getBoundingClientRect();
+  box.style.top = (rect.bottom + window.scrollY) + 'px';
+  box.style.left = (rect.left + window.scrollX) + 'px';
+  box.style.width = rect.width + 'px';
+  box.innerHTML = '';
+  if (!patients.length) {
+    const el = document.createElement('div'); el.className = 'patient-no-match'; el.textContent = 'No matching patients found'; box.appendChild(el);
+  } else {
+    patients.slice(0, 8).forEach(p => {
+      const item = document.createElement('div'); item.className = 'patient-suggestion-item';
+      const dob = p.dob ? ' · DOB ' + p.dob.split('T')[0] : '';
+      item.innerHTML = `<strong>${escHtml(p.first_name + ' ' + p.last_name)}</strong><span style="color:var(--text-muted);font-size:11px;margin-left:6px">${escHtml(dob)}</span>`;
+      item.addEventListener('click', () => { document.getElementById('tr-patient').value = p.first_name + ' ' + p.last_name; document.getElementById('tr-patient-id').value = p.id; hideTrPtSuggestions(); });
+      box.appendChild(item);
+    });
+  }
+  box.classList.remove('hidden');
+}
+function hideTrPtSuggestions() { document.getElementById('tr-patient-suggestions').classList.add('hidden'); }
 async function loadTrans(){
   transports=await GET('/api/transportation').catch(()=>[]);
   const tb=document.getElementById('trans-tbody');
@@ -62,10 +109,14 @@ async function loadTrans(){
     </div></td>
   </tr>`).join('');
 }
-function openTransModal(){editTransId=null;['patient','pickup','dropoff','driver','notes'].forEach(f=>{document.getElementById('tr-'+f).value='';});document.getElementById('tr-time').value='';document.getElementById('tr-status').value='requested';openModal('trans-modal');}
-function editTrans(id){const t=transports.find(x=>x.id===id);if(!t)return;editTransId=id;document.getElementById('tr-patient').value=t.patient_name||'';document.getElementById('tr-pickup').value=t.pickup_address||'';document.getElementById('tr-dropoff').value=t.dropoff_address||'';document.getElementById('tr-driver').value=t.driver_name||'';document.getElementById('tr-notes').value=t.driver_notes||'';document.getElementById('tr-status').value=t.status||'requested';openModal('trans-modal');}
+function openTransModal(){editTransId=null;['patient','pickup','dropoff','driver','notes'].forEach(f=>{document.getElementById('tr-'+f).value='';});document.getElementById('tr-patient-id').value='';document.getElementById('tr-time').value='';document.getElementById('tr-status').value='requested';hideTrPtSuggestions();openModal('trans-modal');}
+function editTrans(id){const t=transports.find(x=>x.id===id);if(!t)return;editTransId=id;document.getElementById('tr-patient').value=t.patient_name||'';document.getElementById('tr-patient-id').value=t.patient_id||'';document.getElementById('tr-pickup').value=t.pickup_address||'';document.getElementById('tr-dropoff').value=t.dropoff_address||'';document.getElementById('tr-driver').value=t.driver_name||'';document.getElementById('tr-notes').value=t.driver_notes||'';document.getElementById('tr-status').value=t.status||'requested';openModal('trans-modal');}
 async function saveTrans(){
-  const data={patient_name:document.getElementById('tr-patient').value.trim(),pickup_address:document.getElementById('tr-pickup').value.trim()||null,pickup_time:document.getElementById('tr-time').value||null,dropoff_address:document.getElementById('tr-dropoff').value.trim()||null,driver_name:document.getElementById('tr-driver').value.trim()||null,driver_notes:document.getElementById('tr-notes').value.trim()||null,status:document.getElementById('tr-status').value};
+  const patientId=document.getElementById('tr-patient-id').value;
+  const patientName=document.getElementById('tr-patient').value.trim();
+  if(!patientId&&patientName){document.getElementById('trans-alert').innerHTML='<div class="alert-warning">No matching patient selected — this request won\'t be linked to a patient record.</div>';}
+  else{document.getElementById('trans-alert').innerHTML='';}
+  const data={patient_id:patientId?parseInt(patientId):null,patient_name:patientName,pickup_address:document.getElementById('tr-pickup').value.trim()||null,pickup_time:document.getElementById('tr-time').value||null,dropoff_address:document.getElementById('tr-dropoff').value.trim()||null,driver_name:document.getElementById('tr-driver').value.trim()||null,driver_notes:document.getElementById('tr-notes').value.trim()||null,status:document.getElementById('tr-status').value};
   try{if(editTransId)await PUT('/api/transportation/'+editTransId,data);else await POST('/api/transportation',data);closeModal('trans-modal');loadTrans();}catch(e){document.getElementById('trans-alert').innerHTML='<div class="alert alert-error">'+e.message+'</div>';}
 }
 async function deleteTrans(id){if(!confirm('Delete request?'))return;await DEL('/api/transportation/'+id).catch(e=>showAlert(e.message));loadTrans();}

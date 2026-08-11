@@ -4,6 +4,15 @@
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Referrals — SpinePay Pro</title>
   <link rel="stylesheet" href="/css/style.css">
+  <style>
+    .patient-suggestions{position:fixed;z-index:9999;background:var(--bg2);border:1px solid var(--border);border-radius:0 0 6px 6px;max-height:200px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,0.4);}
+    .patient-suggestions.hidden{display:none;}
+    .patient-suggestion-item{padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid var(--border);}
+    .patient-suggestion-item:last-child{border-bottom:none;}
+    .patient-suggestion-item:hover{background:var(--bg3);color:var(--gold);}
+    .patient-no-match{padding:8px 12px;font-size:12px;color:var(--text-muted);font-style:italic;}
+    .alert-warning{background:rgba(255,183,18,0.12);border:1px solid rgba(255,183,18,0.4);color:#FFD700;border-radius:6px;padding:8px 12px;font-size:13px;margin-bottom:8px;}
+  </style>
 </head>
 <body>
 <div id="app">
@@ -27,7 +36,7 @@
     <div class="modal-header"><span class="modal-title">New Referral</span><button class="modal-close" onclick="closeModal('ref-modal')">×</button></div>
     <div id="ref-alert"></div>
     <div class="form-row">
-      <div class="form-group"><label>Patient Name</label><input id="r-patient" type="text"></div>
+      <div class="form-group"><label>Patient Name</label><input id="r-patient" type="text" autocomplete="off"><input type="hidden" id="r-patient-id"></div>
       <div class="form-group"><label>Type</label><input id="r-type" type="text" placeholder="e.g. Orthopedic, MRI, PT"></div>
     </div>
     <div class="form-row">
@@ -42,8 +51,46 @@
     </div>
   </div>
 </div>
+<div id="r-patient-suggestions" class="patient-suggestions hidden"></div>
 <script src="/js/layout.js"></script>
 <script>
+let _rPatientTimer = null;
+document.getElementById('r-patient').addEventListener('input', function () {
+  document.getElementById('r-patient-id').value = '';
+  clearTimeout(_rPatientTimer);
+  const q = this.value.trim();
+  if (q.length < 2) { hideRPtSuggestions(); return; }
+  _rPatientTimer = setTimeout(async () => {
+    try { showRPtSuggestions(await GET('/api/patients?search=' + encodeURIComponent(q))); }
+    catch (_) { hideRPtSuggestions(); }
+  }, 300);
+});
+document.addEventListener('click', function (e) {
+  if (!e.target.closest('#r-patient') && !e.target.closest('#r-patient-suggestions')) hideRPtSuggestions();
+});
+function showRPtSuggestions(patients) {
+  const input = document.getElementById('r-patient');
+  const box   = document.getElementById('r-patient-suggestions');
+  const rect  = input.getBoundingClientRect();
+  box.style.top = (rect.bottom + window.scrollY) + 'px';
+  box.style.left = (rect.left + window.scrollX) + 'px';
+  box.style.width = rect.width + 'px';
+  box.innerHTML = '';
+  if (!patients.length) {
+    const el = document.createElement('div'); el.className = 'patient-no-match'; el.textContent = 'No matching patients found'; box.appendChild(el);
+  } else {
+    patients.slice(0, 8).forEach(p => {
+      const item = document.createElement('div'); item.className = 'patient-suggestion-item';
+      const dob = p.dob ? ' · DOB ' + p.dob.split('T')[0] : '';
+      item.innerHTML = `<strong>${escHtml(p.first_name + ' ' + p.last_name)}</strong><span style="color:var(--text-muted);font-size:11px;margin-left:6px">${escHtml(dob)}</span>`;
+      item.addEventListener('click', () => { document.getElementById('r-patient').value = p.first_name + ' ' + p.last_name; document.getElementById('r-patient-id').value = p.id; hideRPtSuggestions(); });
+      box.appendChild(item);
+    });
+  }
+  box.classList.remove('hidden');
+}
+function hideRPtSuggestions() { document.getElementById('r-patient-suggestions').classList.add('hidden'); }
+
 async function loadRefs() {
   const list = await GET('/api/referrals').catch(()=>[]);
   const tb = document.getElementById('ref-tbody');
@@ -61,9 +108,13 @@ async function loadRefs() {
     </div></td>
   </tr>`).join('');
 }
-function openRefModal(){['patient','type','recip','phone','email','reason'].forEach(f=>{const el=document.getElementById('r-'+f);if(el)el.value='';});openModal('ref-modal');}
+function openRefModal(){['patient','type','recip','phone','email','reason'].forEach(f=>{const el=document.getElementById('r-'+f);if(el)el.value='';});document.getElementById('r-patient-id').value='';hideRPtSuggestions();openModal('ref-modal');}
 async function saveRef(){
-  const data={patient_name:document.getElementById('r-patient').value.trim(),type:document.getElementById('r-type').value.trim()||null,recipient_name:document.getElementById('r-recip').value.trim()||null,recipient_phone:document.getElementById('r-phone').value.trim()||null,recipient_email:document.getElementById('r-email').value.trim()||null,reason:document.getElementById('r-reason').value.trim()||null};
+  const patientId=document.getElementById('r-patient-id').value;
+  const patientName=document.getElementById('r-patient').value.trim();
+  if(!patientId&&patientName){document.getElementById('ref-alert').innerHTML='<div class="alert-warning">No matching patient selected — this referral won\'t be linked to a patient record.</div>';}
+  else{document.getElementById('ref-alert').innerHTML='';}
+  const data={patient_id:patientId?parseInt(patientId):null,patient_name:patientName,type:document.getElementById('r-type').value.trim()||null,recipient_name:document.getElementById('r-recip').value.trim()||null,recipient_phone:document.getElementById('r-phone').value.trim()||null,recipient_email:document.getElementById('r-email').value.trim()||null,reason:document.getElementById('r-reason').value.trim()||null};
   try{await POST('/api/referrals',data);closeModal('ref-modal');loadRefs();}catch(e){document.getElementById('ref-alert').innerHTML='<div class="alert alert-error">'+e.message+'</div>';}
 }
 async function markSent(id){await PATCH('/api/referrals/'+id+'/status',{status:'sent'}).catch(e=>showAlert(e.message));loadRefs();}

@@ -113,10 +113,10 @@
     .week-appt-detail { font-size: 10px; opacity: 0.85; font-weight: 600; }
 
     /* ── Patient autocomplete ─────────────────────────────────────────────────── */
-    .patient-ac-wrap { position: relative; }
+    /* position:fixed so the dropdown escapes .modal { overflow-y:auto } clipping */
     .patient-suggestions {
-      position: absolute; top: 100%; left: 0; right: 0; z-index: 200;
-      background: var(--bg2); border: 1px solid var(--border); border-top: none;
+      position: fixed; z-index: 9999;
+      background: var(--bg2); border: 1px solid var(--border);
       border-radius: 0 0 6px 6px; max-height: 200px; overflow-y: auto;
       box-shadow: 0 4px 12px rgba(0,0,0,0.4);
     }
@@ -155,11 +155,10 @@
     </div>
     <div id="appt-alert"></div>
     <div class="form-row">
-      <div class="form-group patient-ac-wrap">
+      <div class="form-group">
         <label>Patient Name</label>
         <input id="a-patient" type="text" placeholder="Type patient name" autocomplete="off">
         <input type="hidden" id="a-patient-id">
-        <div id="a-patient-suggestions" class="patient-suggestions hidden"></div>
       </div>
       <div class="form-group"><label>Date</label><input id="a-date" type="date"></div>
     </div>
@@ -195,6 +194,9 @@
     </div>
   </div>
 </div>
+
+<!-- Patient autocomplete dropdown — kept outside all overflow containers -->
+<div id="a-patient-suggestions" class="patient-suggestions hidden"></div>
 
 <script src="/js/layout.js"></script>
 <script>
@@ -500,11 +502,19 @@ document.getElementById('a-patient').addEventListener('input', function () {
 });
 
 document.addEventListener('click', function (e) {
-  if (!e.target.closest('.patient-ac-wrap')) hidePtSuggestions();
+  if (!e.target.closest('#a-patient') && !e.target.closest('#a-patient-suggestions')) hidePtSuggestions();
 });
 
 function showPtSuggestions(patients) {
-  const box = document.getElementById('a-patient-suggestions');
+  const input = document.getElementById('a-patient');
+  const box   = document.getElementById('a-patient-suggestions');
+  const rect  = input.getBoundingClientRect();
+
+  // Position fixed dropdown directly under the input, matching its width
+  box.style.top   = (rect.bottom + window.scrollY) + 'px';
+  box.style.left  = (rect.left   + window.scrollX) + 'px';
+  box.style.width = rect.width + 'px';
+
   box.innerHTML = '';
   if (!patients.length) {
     const el = document.createElement('div');

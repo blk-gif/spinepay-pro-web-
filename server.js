@@ -28,6 +28,16 @@ app.get('/app.html', (req, res) => res.redirect('/dashboard'));
 
 app.use(express.static(path.join(__dirname, 'public')));
 
+// When CloudFront forwards requests, it sets X-CF-Secure: true on HTTPS connections.
+// EB's nginx overwrites X-Forwarded-Proto before it reaches Express, so we use this
+// custom header as the authoritative signal that the original request was HTTPS.
+// express-session 1.19.0 does not support cookie.secure as a function, so we set
+// req.secure manually here before the session middleware reads it.
+app.use((req, res, next) => {
+  if (req.get('X-CF-Secure') === 'true') req.secure = true;
+  next();
+});
+
 app.use(session({
   store: new PgSession({ pool, createTableIfMissing: true }),
   secret: process.env.SESSION_SECRET || 'spinepay-dev-secret-change-in-production',

@@ -4,6 +4,20 @@
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Billing — SpinePay Pro</title>
   <link rel="stylesheet" href="/css/style.css">
+  <style>
+    .patient-suggestions {
+      position: fixed; z-index: 9999;
+      background: var(--bg2); border: 1px solid var(--border);
+      border-radius: 0 0 6px 6px; max-height: 200px; overflow-y: auto;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    }
+    .patient-suggestions.hidden { display: none; }
+    .patient-suggestion-item { padding: 8px 12px; cursor: pointer; font-size: 13px; border-bottom: 1px solid var(--border); }
+    .patient-suggestion-item:last-child { border-bottom: none; }
+    .patient-suggestion-item:hover { background: var(--bg3); color: var(--gold); }
+    .patient-no-match { padding: 8px 12px; font-size: 12px; color: var(--text-muted); font-style: italic; }
+    .alert-warning { background: rgba(255,183,18,0.12); border: 1px solid rgba(255,183,18,0.4); color: #FFD700; border-radius: 6px; padding: 8px 12px; font-size: 13px; margin-bottom: 8px; }
+  </style>
 </head>
 <body>
 <div id="app">
@@ -42,7 +56,7 @@
     <div class="modal-header"><span class="modal-title" id="claim-modal-title">New Claim</span><button class="modal-close" onclick="closeModal('claim-modal')">×</button></div>
     <div id="claim-alert"></div>
     <div class="form-row">
-      <div class="form-group"><label>Patient Name</label><input id="c-patient" type="text"></div>
+      <div class="form-group"><label>Patient Name</label><input id="c-patient" type="text" autocomplete="off"><input type="hidden" id="c-patient-id"></div>
       <div class="form-group"><label>Insurance</label><input id="c-ins" type="text"></div>
     </div>
     <div class="form-row">
@@ -65,9 +79,66 @@
   </div>
 </div>
 
+<!-- Patient autocomplete dropdown — at body level to avoid modal overflow clipping -->
+<div id="c-patient-suggestions" class="patient-suggestions hidden"></div>
+
 <script src="/js/layout.js"></script>
 <script>
 let claims = [], editClaimId = null, currentUser = null;
+
+// ── Patient autocomplete ───────────────────────────────────────────────────────
+let _cPatientTimer = null;
+
+document.getElementById('c-patient').addEventListener('input', function () {
+  document.getElementById('c-patient-id').value = '';
+  clearTimeout(_cPatientTimer);
+  const q = this.value.trim();
+  if (q.length < 2) { hideCPtSuggestions(); return; }
+  _cPatientTimer = setTimeout(async () => {
+    try {
+      const pts = await GET('/api/patients?search=' + encodeURIComponent(q));
+      showCPtSuggestions(pts);
+    } catch (_) { hideCPtSuggestions(); }
+  }, 300);
+});
+
+document.addEventListener('click', function (e) {
+  if (!e.target.closest('#c-patient') && !e.target.closest('#c-patient-suggestions')) hideCPtSuggestions();
+});
+
+function showCPtSuggestions(patients) {
+  const input = document.getElementById('c-patient');
+  const box   = document.getElementById('c-patient-suggestions');
+  const rect  = input.getBoundingClientRect();
+  box.style.top   = (rect.bottom + window.scrollY) + 'px';
+  box.style.left  = (rect.left   + window.scrollX) + 'px';
+  box.style.width = rect.width + 'px';
+  box.innerHTML = '';
+  if (!patients.length) {
+    const el = document.createElement('div');
+    el.className = 'patient-no-match';
+    el.textContent = 'No matching patients found';
+    box.appendChild(el);
+  } else {
+    patients.slice(0, 8).forEach(p => {
+      const item = document.createElement('div');
+      item.className = 'patient-suggestion-item';
+      const dob = p.dob ? ' · DOB ' + p.dob.split('T')[0] : '';
+      item.innerHTML = `<strong>${escHtml(p.first_name + ' ' + p.last_name)}</strong><span style="color:var(--text-muted);font-size:11px;margin-left:6px">${escHtml(dob)}</span>`;
+      item.addEventListener('click', () => {
+        document.getElementById('c-patient').value    = p.first_name + ' ' + p.last_name;
+        document.getElementById('c-patient-id').value = p.id;
+        hideCPtSuggestions();
+      });
+      box.appendChild(item);
+    });
+  }
+  box.classList.remove('hidden');
+}
+
+function hideCPtSuggestions() {
+  document.getElementById('c-patient-suggestions').classList.add('hidden');
+}
 
 async function loadClaims() {
   const sf = document.getElementById('status-filter').value;
@@ -99,6 +170,8 @@ function openClaimModal() {
   editClaimId = null;
   document.getElementById('claim-modal-title').textContent = 'New Claim';
   ['patient','ins','cpt','icd','notes'].forEach(f => document.getElementById('c-'+f).value='');
+  document.getElementById('c-patient-id').value = '';
+  hideCPtSuggestions();
   document.getElementById('c-svc').value = new Date().toISOString().split('T')[0];
   document.getElementById('c-submit').value = '';
   document.getElementById('c-billed').value = '0';
@@ -111,7 +184,8 @@ function editClaim(id) {
   if (!c) return;
   editClaimId = id;
   document.getElementById('claim-modal-title').textContent = 'Edit Claim';
-  document.getElementById('c-patient').value  = (c.first_name||c.patient_name||'')+(c.last_name?' '+c.last_name:'');
+  document.getElementById('c-patient').value    = (c.first_name||c.patient_name||'')+(c.last_name?' '+c.last_name:'');
+  document.getElementById('c-patient-id').value = c.patient_id || '';
   document.getElementById('c-ins').value      = c.insurance_name||'';
   document.getElementById('c-svc').value      = c.service_date ? c.service_date.split('T')[0]:'';
   document.getElementById('c-submit').value   = c.submitted_date ? c.submitted_date.split('T')[0]:'';
@@ -124,16 +198,24 @@ function editClaim(id) {
 }
 
 async function saveClaim() {
+  const patientId   = document.getElementById('c-patient-id').value;
+  const patientName = document.getElementById('c-patient').value.trim();
+  if (!patientId && patientName) {
+    document.getElementById('claim-alert').innerHTML = '<div class="alert-warning">No matching patient selected — this claim won\'t be linked to a patient record.</div>';
+  } else {
+    document.getElementById('claim-alert').innerHTML = '';
+  }
   const data = {
-    patient_name: document.getElementById('c-patient').value.trim(),
+    patient_id:     patientId ? parseInt(patientId) : null,
+    patient_name:   patientName,
     insurance_name: document.getElementById('c-ins').value.trim(),
-    service_date: document.getElementById('c-svc').value||null,
+    service_date:   document.getElementById('c-svc').value||null,
     submitted_date: document.getElementById('c-submit').value||null,
-    cpt_codes: document.getElementById('c-cpt').value.trim()||null,
-    icd_codes: document.getElementById('c-icd').value.trim()||null,
-    billed_amount: parseFloat(document.getElementById('c-billed').value)||0,
-    status: document.getElementById('c-status').value,
-    notes: document.getElementById('c-notes').value.trim()||null,
+    cpt_codes:      document.getElementById('c-cpt').value.trim()||null,
+    icd_codes:      document.getElementById('c-icd').value.trim()||null,
+    billed_amount:  parseFloat(document.getElementById('c-billed').value)||0,
+    status:         document.getElementById('c-status').value,
+    notes:          document.getElementById('c-notes').value.trim()||null,
   };
   try {
     if (editClaimId) await PUT('/api/billing/claims/'+editClaimId, data);

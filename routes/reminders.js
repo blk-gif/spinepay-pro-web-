@@ -1,6 +1,7 @@
 'use strict';
 const { Router } = require('express');
 const { pool } = require('../db/pool');
+const { sendEmail } = require('../services/mail');
 const router = Router();
 
 router.get('/templates', async (req, res) => {
@@ -63,11 +64,34 @@ router.post('/send', async (req, res) => {
       .replace(/\{\{date\}\}/g, appt.date)
       .replace(/\{\{time\}\}/g, appt.time);
     const recipient = appt.email;
-    await pool.query(
-      `INSERT INTO reminder_log (appointment_id, patient_id, template_id, type, recipient, message, status) VALUES ($1,$2,$3,$4,$5,$6,'sent')`,
-      [appointment_id, appt.patient_id, template_id, t.type, recipient, msg]
-    );
-    res.json({ success: true, message: msg, recipient });
+
+    if (!recipient || !recipient.trim()) {
+      await pool.query(
+        `INSERT INTO reminder_log (appointment_id, patient_id, template_id, type, recipient, message, status, error_reason) VALUES ($1,$2,$3,$4,$5,$6,'failed',$7)`,
+        [appointment_id, appt.patient_id, template_id, t.type, recipient || null, msg, 'No email on file']
+      );
+      return res.status(400).json({ success: false, error: 'No email on file for this patient' });
+    }
+
+    const result = await sendEmail({
+      to: recipient,
+      subject: t.subject || 'Appointment Reminder',
+      textContent: msg,
+    });
+
+    if (result.success) {
+      await pool.query(
+        `INSERT INTO reminder_log (appointment_id, patient_id, template_id, type, recipient, message, status) VALUES ($1,$2,$3,$4,$5,$6,'sent')`,
+        [appointment_id, appt.patient_id, template_id, t.type, recipient, msg]
+      );
+      return res.json({ success: true, message: msg, recipient });
+    } else {
+      await pool.query(
+        `INSERT INTO reminder_log (appointment_id, patient_id, template_id, type, recipient, message, status, error_reason) VALUES ($1,$2,$3,$4,$5,$6,'failed',$7)`,
+        [appointment_id, appt.patient_id, template_id, t.type, recipient, msg, result.error || 'Unknown error']
+      );
+      return res.status(502).json({ success: false, error: result.error || 'Failed to send email' });
+    }
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

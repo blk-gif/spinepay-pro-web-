@@ -28,13 +28,14 @@ app.get('/app.html', (req, res) => res.redirect('/dashboard'));
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-// When CloudFront forwards requests, it sets X-CF-Secure: true on HTTPS connections.
-// EB's nginx overwrites X-Forwarded-Proto before it reaches Express, so we use this
-// custom header as the authoritative signal that the original request was HTTPS.
-// express-session 1.19.0 does not support cookie.secure as a function, so we set
-// req.secure manually here before the session middleware reads it.
+// express-session 1.19.0 does not support cookie.secure as a function.
+// req.secure is a read-only prototype getter in Express (strict mode blocks assignment).
+// Use Object.defineProperty to shadow it on the request instance when CloudFront
+// signals the original connection was HTTPS via the X-CF-Secure custom header.
 app.use((req, res, next) => {
-  if (req.get('X-CF-Secure') === 'true') req.secure = true;
+  if (req.get('X-CF-Secure') === 'true') {
+    Object.defineProperty(req, 'secure', { value: true, configurable: true });
+  }
   next();
 });
 

@@ -165,8 +165,10 @@ async function start() {
     if (process.env.NODE_ENV === 'production') {
       const { startBackupSchedule } = require('./services/backup');
       const { startReviewSchedule } = require('./services/reviews');
+      const { startReminderSchedule } = require('./services/reminders');
       startBackupSchedule();
       startReviewSchedule();
+      startReminderSchedule();
     }
   });
 }

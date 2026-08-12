@@ -4,21 +4,17 @@ const { Router } = require('express');
 const bcrypt = require('bcryptjs');
 const { pool } = require('../db/pool');
 const { auditLog } = require('../middleware/audit');
+const { sendEmail } = require('../services/mail');
 
 const router = Router();
 
 async function sendWelcomeEmail(staffMember, tempPassword) {
-  if (!process.env.SENDGRID_API_KEY) return;
   if (!staffMember.email) return;
-  try {
-    const sgMail = require('@sendgrid/mail');
-    sgMail.setApiKey(process.env.SENDGRID_API_KEY);
-    const practiceEmail = process.env.PRACTICE_EMAIL || 'noreply@spinepay.com';
-    await sgMail.send({
-      to: staffMember.email,
-      from: practiceEmail,
-      subject: 'Welcome to SpinePay Pro — Your Account is Ready',
-      html: `
+  const result = await sendEmail({
+    to: staffMember.email,
+    subject: 'Welcome to SpinePay Pro — Your Account is Ready',
+    textContent: `Hi ${staffMember.first_name},\n\nYour account at Walden Bailey Chiropractic has been created.\n\nUsername: ${staffMember.username}\nTemporary Password: ${tempPassword}\n\nPlease log in and change your password on first sign-in.\n\nThis is an automated message from SpinePay Pro.`,
+    htmlContent: `
         <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto">
           <h2 style="color:#1a1a1a">Welcome to SpinePay Pro</h2>
           <p>Hi ${staffMember.first_name},</p>
@@ -29,9 +25,9 @@ async function sendWelcomeEmail(staffMember, tempPassword) {
           <p style="color:#888;font-size:12px">This is an automated message from SpinePay Pro.</p>
         </div>
       `,
-    });
-  } catch (err) {
-    console.error('[Staff] SendGrid error:', err.message);
+  });
+  if (!result.success) {
+    console.error('[Staff] Welcome email failed for', staffMember.username + ':', result.error);
   }
 }
 

@@ -2,6 +2,7 @@
 
 const cron = require('node-cron');
 const { pool } = require('../db/pool');
+const { sendEmail } = require('./mail');
 
 const GOOGLE_REVIEW_URL = process.env.GOOGLE_REVIEW_URL;
 const TWILIO_FROM = process.env.TWILIO_PHONE_NUMBER || '+17164532864';
@@ -92,19 +93,13 @@ async function sendReviewRequest(reviewRequestId) {
   }
 
   // Always try email — don't wait for SMS to succeed or fail
-  if (request.patient_email && process.env.SENDGRID_API_KEY && GOOGLE_REVIEW_URL) {
+  if (request.patient_email && GOOGLE_REVIEW_URL) {
     console.log('[Reviews] Attempting email to:', request.patient_email);
-    try {
-      const sgMail = require('@sendgrid/mail');
-      sgMail.setApiKey(process.env.SENDGRID_API_KEY);
-      await sgMail.send({
-        to: request.patient_email,
-        from: {
-          email: 'jaytorres103@gmail.com', // temp — change to drward@waldenchiropractic.com after verification
-          name: 'Walden Bailey Chiropractic'
-        },
-        subject: `Thank you for visiting ${PRACTICE_NAME}!`,
-        html: `
+    const emailResult = await sendEmail({
+      to: request.patient_email,
+      subject: `Thank you for visiting ${PRACTICE_NAME}!`,
+      textContent: `Thank you for visiting ${PRACTICE_NAME}!\n\nThank you, ${request.patient_name}!\n\nWe hope your visit went well and that you're feeling better. Your health and comfort are our top priorities.\n\nIf you have a moment, we would truly appreciate you sharing your experience. Your review helps us continue serving the Buffalo community.\n\n⭐ Leave a Google Review: ${GOOGLE_REVIEW_URL}\n\nThank you for choosing ${PRACTICE_NAME}.\n(716) 893-9200 • drward@waldenchiropractic.com`,
+      htmlContent: `
           <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
             <div style="background:#1a1a1a;padding:30px;text-align:center;">
               <h1 style="color:#FFD700;margin:0;">Walden Bailey Chiropractic</h1>
@@ -135,16 +130,16 @@ async function sendReviewRequest(reviewRequestId) {
               </p>
             </div>
           </div>
-        `
-      });
+        `,
+    });
+    if (emailResult.success) {
       emailSent = true;
       console.log('[Reviews] Email sent successfully to:', request.patient_email);
-    } catch (err) {
-      console.error('[Reviews] Email failed:', err.message, err.response?.body?.errors);
+    } else {
+      console.error('[Reviews] Request email failed:', emailResult.error);
     }
   } else {
     console.log('[Reviews] Email skipped — email:', request.patient_email,
-      'SendGrid configured:', !!process.env.SENDGRID_API_KEY,
       'Review URL set:', !!GOOGLE_REVIEW_URL);
   }
 

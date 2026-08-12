@@ -14,7 +14,6 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1018.0",
     "@aws-sdk/s3-request-presigner": "^3.1018.0",
-    "@sendgrid/mail": "^8.1.6",
     "archiver": "^7.0.1",
     "bcryptjs": "^3.0.3",
     "connect-pg-simple": "^10.0.0",

@@ -4,6 +4,7 @@ const cron = require('node-cron');
 const { PutObjectCommand, ListObjectsV2Command, DeleteObjectCommand } = require('@aws-sdk/client-s3');
 const { pool } = require('../db/pool');
 const { s3Client, BUCKET_NAME } = require('../config/s3');
+const { sendEmail } = require('./mail');
 
 const BACKUP_PREFIX = 'backups/postgresql/';
 
@@ -136,18 +137,12 @@ async function cleanOldBackups() {
 }
 
 async function sendBackupFailureAlert(errorMessage) {
-  if (!process.env.SENDGRID_API_KEY) return;
-  try {
-    const sgMail = require('@sendgrid/mail');
-    sgMail.setApiKey(process.env.SENDGRID_API_KEY);
-
-    const to = process.env.BACKUP_ALERT_EMAIL || process.env.PRACTICE_EMAIL || 'drward@waldenchiropractic.com';
-
-    await sgMail.send({
-      to,
-      from: process.env.PRACTICE_EMAIL || 'drward@waldenchiropractic.com',
-      subject: 'SpinePay Pro Backup Failed',
-      html: `
+  const to = process.env.BACKUP_ALERT_EMAIL || process.env.PRACTICE_EMAIL || 'drward@waldenchiropractic.com';
+  const result = await sendEmail({
+    to,
+    subject: 'SpinePay Pro Backup Failed',
+    textContent: `SpinePay Pro Automated Backup Failed\n\nTime: ${new Date().toISOString()}\nError: ${errorMessage}\n\nPlease check the server logs and backup status in SpinePay Pro Settings.\n\nManual backup may be required to maintain HIPAA compliance.\n\nWalden Bailey Chiropractic • SpinePay Pro`,
+    htmlContent: `
         <div style="font-family:Arial;max-width:600px;margin:0 auto">
           <div style="background:#cc0000;padding:20px;text-align:center">
             <h1 style="color:#fff;margin:0">Backup Failed</h1>
@@ -156,7 +151,7 @@ async function sendBackupFailureAlert(errorMessage) {
             <h2>SpinePay Pro Automated Backup Failed</h2>
             <p><strong>Time:</strong> ${new Date().toISOString()}</p>
             <p><strong>Error:</strong> ${errorMessage}</p>
-            <p>Please check the Render logs and backup status in SpinePay Pro Settings.</p>
+            <p>Please check the server logs and backup status in SpinePay Pro Settings.</p>
             <p>Manual backup may be required to maintain HIPAA compliance.</p>
           </div>
           <div style="background:#1a1a1a;padding:15px;text-align:center">
@@ -164,10 +159,11 @@ async function sendBackupFailureAlert(errorMessage) {
           </div>
         </div>
       `,
-    });
+  });
+  if (result.success) {
     console.log('[Backup] Failure alert email sent to', to);
-  } catch (err) {
-    console.error('[Backup] Failed to send alert email:', err.message);
+  } else {
+    console.error('[Backup] Notification email failed:', result.error);
   }
 }
 

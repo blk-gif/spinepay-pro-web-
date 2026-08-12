@@ -4,6 +4,14 @@
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Reminders — SpinePay Pro</title>
   <link rel="stylesheet" href="/css/style.css">
+  <style>
+    .patient-suggestions{position:fixed;z-index:9999;background:var(--bg2);border:1px solid var(--border);border-radius:0 0 6px 6px;max-height:200px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,0.4);}
+    .patient-suggestions.hidden{display:none;}
+    .patient-suggestion-item{padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid var(--border);}
+    .patient-suggestion-item:last-child{border-bottom:none;}
+    .patient-suggestion-item:hover{background:var(--bg3);color:var(--gold);}
+    .patient-no-match{padding:8px 12px;font-size:12px;color:var(--text-muted);font-style:italic;}
+  </style>
 </head>
 <body>
 <div id="app">
@@ -14,7 +22,7 @@
       <div id="alert-area"></div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
         <div class="card">
-          <div class="card-header"><span class="card-title">Templates</span><button class="btn btn-primary" onclick="openTmplModal()">+ New Template</button></div>
+          <div class="card-header"><span class="card-title">Templates</span><div style="display:flex;gap:8px"><button class="btn btn-outline" onclick="openSendModal()">Send Reminder</button><button class="btn btn-primary" onclick="openTmplModal()">+ New Template</button></div></div>
           <div id="tmpl-list"></div>
         </div>
         <div class="card">
@@ -45,9 +53,113 @@
     </div>
   </div>
 </div>
+<div class="modal-overlay hidden" id="send-modal">
+  <div class="modal">
+    <div class="modal-header"><span class="modal-title">Send Reminder</span><button class="modal-close" onclick="closeModal('send-modal')">×</button></div>
+    <div id="send-alert"></div>
+    <div class="form-group">
+      <label>Patient</label>
+      <input id="s-patient" type="text" placeholder="Type patient name" autocomplete="off">
+      <input type="hidden" id="s-patient-id">
+    </div>
+    <div class="form-group">
+      <label>Appointment</label>
+      <select id="s-appt"><option value="">— Select patient first —</option></select>
+    </div>
+    <div class="form-group">
+      <label>Template</label>
+      <select id="s-tmpl"><option value="">— Select template —</option></select>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('send-modal')">Cancel</button>
+      <button class="btn btn-primary" onclick="doSendReminder()">Send</button>
+    </div>
+  </div>
+</div>
+
+<!-- Patient autocomplete dropdown — body-level to avoid modal overflow clipping -->
+<div id="s-patient-suggestions" class="patient-suggestions hidden"></div>
+
 <script src="/js/layout.js"></script>
 <script>
 let templates = [], editTmplId = null, currentUser = null;
+
+// ── Send Reminder — patient autocomplete ──────────────────────────────────────
+let _sPatientTimer = null;
+document.getElementById('s-patient').addEventListener('input', function () {
+  document.getElementById('s-patient-id').value = '';
+  document.getElementById('s-appt').innerHTML = '<option value="">— Select patient first —</option>';
+  clearTimeout(_sPatientTimer);
+  const q = this.value.trim();
+  if (q.length < 2) { hideSPtSuggestions(); return; }
+  _sPatientTimer = setTimeout(async () => {
+    try { showSPtSuggestions(await GET('/api/patients?search=' + encodeURIComponent(q))); }
+    catch (_) { hideSPtSuggestions(); }
+  }, 300);
+});
+document.addEventListener('click', function (e) {
+  if (!e.target.closest('#s-patient') && !e.target.closest('#s-patient-suggestions')) hideSPtSuggestions();
+});
+function showSPtSuggestions(patients) {
+  const input = document.getElementById('s-patient');
+  const box   = document.getElementById('s-patient-suggestions');
+  const rect  = input.getBoundingClientRect();
+  box.style.top = (rect.bottom + window.scrollY) + 'px';
+  box.style.left = (rect.left + window.scrollX) + 'px';
+  box.style.width = rect.width + 'px';
+  box.innerHTML = '';
+  if (!patients.length) {
+    const el = document.createElement('div'); el.className = 'patient-no-match'; el.textContent = 'No matching patients found'; box.appendChild(el);
+  } else {
+    patients.slice(0, 8).forEach(p => {
+      const item = document.createElement('div'); item.className = 'patient-suggestion-item';
+      const dob = p.dob ? ' · DOB ' + p.dob.split('T')[0] : '';
+      item.innerHTML = `<strong>${escHtml(p.first_name + ' ' + p.last_name)}</strong><span style="color:var(--text-muted);font-size:11px;margin-left:6px">${escHtml(dob)}</span>`;
+      item.addEventListener('click', async () => {
+        document.getElementById('s-patient').value    = p.first_name + ' ' + p.last_name;
+        document.getElementById('s-patient-id').value = p.id;
+        hideSPtSuggestions();
+        await loadPatientAppts(p.id);
+      });
+      box.appendChild(item);
+    });
+  }
+  box.classList.remove('hidden');
+}
+function hideSPtSuggestions() { document.getElementById('s-patient-suggestions').classList.add('hidden'); }
+
+async function loadPatientAppts(patientId) {
+  const sel = document.getElementById('s-appt');
+  sel.innerHTML = '<option value="">Loading…</option>';
+  try {
+    const appts = await GET('/api/appointments?patient_id=' + patientId);
+    if (!appts.length) { sel.innerHTML = '<option value="">No appointments found</option>'; return; }
+    sel.innerHTML = '<option value="">— Select appointment —</option>' +
+      appts.map(a => `<option value="${a.id}">${a.date ? a.date.split('T')[0] : '?'} ${a.time||''} · ${escHtml(a.type||'')}</option>`).join('');
+  } catch (_) { sel.innerHTML = '<option value="">Failed to load appointments</option>'; }
+}
+
+function openSendModal() {
+  document.getElementById('s-patient').value    = '';
+  document.getElementById('s-patient-id').value = '';
+  document.getElementById('s-appt').innerHTML   = '<option value="">— Select patient first —</option>';
+  document.getElementById('s-tmpl').innerHTML   = '<option value="">— Select template —</option>' +
+    templates.map(t => `<option value="${t.id}">${escHtml(t.name)}</option>`).join('');
+  document.getElementById('send-alert').innerHTML = '';
+  hideSPtSuggestions();
+  openModal('send-modal');
+}
+
+async function doSendReminder() {
+  const apptId = document.getElementById('s-appt').value;
+  const tmplId = document.getElementById('s-tmpl').value;
+  if (!apptId || !tmplId) { document.getElementById('send-alert').innerHTML = '<div class="alert alert-error">Select an appointment and template</div>'; return; }
+  try {
+    const result = await POST('/api/reminders/send', { appointment_id: parseInt(apptId), template_id: parseInt(tmplId) });
+    document.getElementById('send-alert').innerHTML = '<div class="alert alert-error" style="background:rgba(46,204,113,.15);border-color:rgba(46,204,113,.4);color:#2ecc71">Reminder sent to ' + escHtml(result.recipient) + '</div>';
+    loadAll();
+  } catch(e) { document.getElementById('send-alert').innerHTML = '<div class="alert alert-error">' + e.message + '</div>'; }
+}
 async function loadAll() {
   const isAdmin = currentUser && currentUser.role === 'admin';
   [templates] = await Promise.all([GET('/api/reminders/templates').catch(()=>[])]);

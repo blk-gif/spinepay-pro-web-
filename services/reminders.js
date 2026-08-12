@@ -94,7 +94,6 @@ async function processReminders() {
       WHERE t.active = TRUE
         AND a.patient_id IS NOT NULL
         AND a.time IS NOT NULL
-        AND a.time != ''
         AND LOWER(a.status) NOT IN ('cancelled', 'no-show', 'completed')
         AND NOT EXISTS (
           SELECT 1 FROM reminder_log rl

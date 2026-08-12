@@ -101,7 +101,7 @@ async function processReminders() {
           WHERE rl.appointment_id = a.id AND rl.template_id = t.id
         )
         AND EXTRACT(EPOCH FROM (
-          (a.date + a.time::time) AT TIME ZONE 'America/New_York' - NOW()
+          (a.date + NULLIF(trim(a.time), '')::time) AT TIME ZONE 'America/New_York' - NOW()
         )) / 3600 BETWEEN t.trigger_hours - 0.25 AND t.trigger_hours + 0.25
     `);
 

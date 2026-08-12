@@ -87,6 +87,7 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
   try {
     const { patient_id, patient_name, provider, date, time, duration, type, status, notes, room, confirmed } = req.body;
+    if (!date || !time) return res.status(400).json({ error: 'Date and time required' });
     const { rows } = await pool.query(
       `UPDATE appointments SET patient_id=$1, patient_name=$2, provider=$3, date=$4, time=$5, duration=$6, type=$7, status=$8, notes=$9, room=$10, confirmed=$11
        WHERE id=$12 RETURNING *`,

@@ -20,14 +20,14 @@
     <div id="topbar"></div>
     <div id="content" class="main-content">
       <div id="alert-area"></div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start">
         <div class="card">
           <div class="card-header"><span class="card-title">Templates</span><div style="display:flex;gap:8px"><button class="btn btn-outline" onclick="openSendModal()">Send Reminder</button><button class="btn btn-primary" onclick="openTmplModal()">+ New Template</button></div></div>
           <div id="tmpl-list"></div>
         </div>
         <div class="card">
           <div class="card-header"><span class="card-title">Send Log</span></div>
-          <div class="table-wrap"><table><thead><tr><th>Patient</th><th>Type</th><th>Recipient</th><th>Sent</th></tr></thead>
+          <div class="table-wrap"><table><thead><tr><th>Patient</th><th>Type</th><th>Recipient</th><th>Sent At</th></tr></thead>
           <tbody id="log-tbody"></tbody></table></div>
         </div>
       </div>
@@ -160,6 +160,12 @@ async function doSendReminder() {
     loadAll();
   } catch(e) { document.getElementById('send-alert').innerHTML = '<div class="alert alert-error">' + e.message + '</div>'; }
 }
+function fmtSentAt(d) {
+  if (!d) return '—';
+  const dt = new Date(d);
+  return dt.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+    + ' at ' + dt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+}
 async function loadAll() {
   const isAdmin = currentUser && currentUser.role === 'admin';
   [templates] = await Promise.all([GET('/api/reminders/templates').catch(()=>[])]);
@@ -177,7 +183,7 @@ async function loadAll() {
       <div style="color:var(--text-muted);font-size:12px;margin-top:4px">${t.trigger_hours}h before — ${escHtml(t.body?.slice(0,80)+'...')}</div>
     </div>`).join('') : '<div class="empty-state"><div class="icon">🔔</div><p>No templates</p></div>';
   const tb = document.getElementById('log-tbody');
-  tb.innerHTML = logList.length ? logList.map(l => `<tr><td>${escHtml(l.patient_name||'—')}</td><td>${l.type}</td><td>${escHtml(l.recipient||'—')}</td><td>${fmtDate(l.sent_at)}</td></tr>`).join('') : '<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:20px">No log entries</td></tr>';
+  tb.innerHTML = logList.length ? logList.map(l => `<tr><td>${escHtml(l.patient_name||'—')}</td><td>${l.type}</td><td>${escHtml(l.recipient||'—')}</td><td>${fmtSentAt(l.sent_at)}</td></tr>`).join('') : '<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:20px">No log entries</td></tr>';
 }
 function openTmplModal() { editTmplId=null; document.getElementById('tmpl-modal-title').textContent='New Template'; ['name','subject','body'].forEach(f=>document.getElementById('t-'+f).value=''); document.getElementById('t-hours').value=24; document.getElementById('t-type').value='email'; openModal('tmpl-modal'); }
 function editTmpl(id) { const t=templates.find(x=>x.id===id); if(!t)return; editTmplId=id; document.getElementById('tmpl-modal-title').textContent='Edit Template'; document.getElementById('t-name').value=t.name||''; document.getElementById('t-type').value=t.type||'email'; document.getElementById('t-hours').value=t.trigger_hours||24; document.getElementById('t-subject').value=t.subject||''; document.getElementById('t-body').value=t.body||''; openModal('tmpl-modal'); }

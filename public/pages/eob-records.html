@@ -84,8 +84,8 @@ function showEPtSuggestions(patients) {
   const input = document.getElementById('e-patient');
   const box   = document.getElementById('e-patient-suggestions');
   const rect  = input.getBoundingClientRect();
-  box.style.top = (rect.bottom + window.scrollY) + 'px';
-  box.style.left = (rect.left + window.scrollX) + 'px';
+  box.style.top = rect.bottom + 'px';
+  box.style.left = rect.left + 'px';
   box.style.width = rect.width + 'px';
   box.innerHTML = '';
   if (!patients.length) {

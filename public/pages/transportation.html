@@ -75,8 +75,8 @@ function showTrPtSuggestions(patients) {
   const input = document.getElementById('tr-patient');
   const box   = document.getElementById('tr-patient-suggestions');
   const rect  = input.getBoundingClientRect();
-  box.style.top = (rect.bottom + window.scrollY) + 'px';
-  box.style.left = (rect.left + window.scrollX) + 'px';
+  box.style.top = rect.bottom + 'px';
+  box.style.left = rect.left + 'px';
   box.style.width = rect.width + 'px';
   box.innerHTML = '';
   if (!patients.length) {

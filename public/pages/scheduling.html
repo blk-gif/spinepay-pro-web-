@@ -511,8 +511,8 @@ function showPtSuggestions(patients) {
   const rect  = input.getBoundingClientRect();
 
   // Position fixed dropdown directly under the input, matching its width
-  box.style.top   = (rect.bottom + window.scrollY) + 'px';
-  box.style.left  = (rect.left   + window.scrollX) + 'px';
+  box.style.top   = rect.bottom + 'px';
+  box.style.left  = rect.left + 'px';
   box.style.width = rect.width + 'px';
 
   box.innerHTML = '';

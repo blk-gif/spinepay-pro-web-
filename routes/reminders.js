@@ -59,10 +59,12 @@ router.post('/send', async (req, res) => {
     const { rows: tmpl } = await pool.query('SELECT * FROM reminder_templates WHERE id = $1', [template_id]);
     if (!appts[0] || !tmpl[0]) return res.status(404).json({ error: 'Appointment or template not found' });
     const appt = appts[0], t = tmpl[0];
+    const fmtDate = new Date(appt.date).toLocaleDateString('en-US', { timeZone: 'UTC', weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+    const fmtTime = (() => { const [h, m] = (appt.time || '').split(':').map(Number); const p = h >= 12 ? 'PM' : 'AM'; return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${p}`; })();
     const msg = t.body
       .replace(/\{\{patient_name\}\}/g, `${appt.first_name} ${appt.last_name}`)
-      .replace(/\{\{date\}\}/g, appt.date)
-      .replace(/\{\{time\}\}/g, appt.time);
+      .replace(/\{\{date\}\}/g, fmtDate)
+      .replace(/\{\{time\}\}/g, fmtTime);
     const recipient = appt.email;
 
     if (!recipient || !recipient.trim()) {

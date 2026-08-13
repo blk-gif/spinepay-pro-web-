@@ -4,6 +4,7 @@ const { Router } = require('express');
 const { pool } = require('../db/pool');
 const { auditLog } = require('../middleware/audit');
 const { requireAuth } = require('../middleware/auth');
+const { logActivity } = require('../services/activityLog');
 
 const router = Router();
 
@@ -11,6 +12,21 @@ const router = Router();
 
 function normalizeStatus(raw) {
   return raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase();
+}
+
+// Build a human-readable appointment summary for the activity log
+// e.g. "Jonathan Torres — Aug 13 3:30 PM"
+function fmtApptSummary(patientName, date, time) {
+  const name = patientName || 'Unknown';
+  const d = new Date(date);
+  const datePart = isNaN(d)
+    ? String(date)
+    : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+  const [h, m] = (String(time || '')).split(':').map(Number);
+  const timePart = !isNaN(h)
+    ? `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`
+    : '';
+  return timePart ? `${name} — ${datePart} ${timePart}` : `${name} — ${datePart}`;
 }
 
 function maybeScheduleReview(apptId) {
@@ -113,6 +129,7 @@ router.post('/', async (req, res) => {
       [patient_id||null, patient_name||null, provider||'Dr. Walden Bailey', date, time, duration||30, type||'adjustment', status||'scheduled', notes||null, room||null]
     );
     await auditLog(req, 'CREATE', 'appointment', rows[0].id);
+    await logActivity(req, 'created', 'appointment', rows[0].id, fmtApptSummary(rows[0].patient_name, rows[0].date, rows[0].time));
     res.status(201).json(rows[0]);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -148,6 +165,7 @@ router.put('/:id', requireAuth, async (req, res) => {
     }
 
     await auditLog(req, 'UPDATE', 'appointment', req.params.id);
+    await logActivity(req, 'edited', 'appointment', rows[0].id, fmtApptSummary(rows[0].patient_name, rows[0].date, rows[0].time));
     res.json(rows[0]);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -169,14 +187,26 @@ router.patch('/:id/status', requireAuth, async (req, res, next) => {
     }
 
     await auditLog(req, 'UPDATE_STATUS', 'appointment', req.params.id);
+    await logActivity(req, 'edited', 'appointment', rows[0].id,
+      `${rows[0].patient_name || 'Unknown'} — status changed to ${normalizedStatus}`);
     res.json({ success: true, appointment: rows[0] });
   } catch (err) { next(err); }
 });
 
 router.delete('/:id', async (req, res) => {
   try {
+    // Capture summary before deletion so the activity log has meaningful context
+    const preResult = await pool.query(
+      'SELECT patient_name, date, time FROM appointments WHERE id = $1', [req.params.id]
+    );
+    const pre = preResult.rows[0];
+    const deleteSummary = pre
+      ? fmtApptSummary(pre.patient_name, pre.date, pre.time)
+      : `Appointment #${req.params.id}`;
+
     await pool.query('DELETE FROM appointments WHERE id = $1', [req.params.id]);
     await auditLog(req, 'DELETE', 'appointment', req.params.id);
+    await logActivity(req, 'deleted', 'appointment', req.params.id, deleteSummary);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

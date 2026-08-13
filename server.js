@@ -117,9 +117,6 @@ app.use('/webhooks',                        require('./routes/webhooks'));
 // Serve local document uploads (S3 fallback)
 app.use('/uploads', requireAuth, express.static(path.join(__dirname, 'uploads')));
 
-// Redirect legacy standalone pages that now live inside the SPA
-app.get('/scheduling', (req, res) => res.redirect('/app.html#scheduling'));
-
 app.use((req, res, next) => {
   if (req.method !== 'GET') return next();
   if (req.path.startsWith('/api')) return res.status(404).json({ error: 'Not found' });

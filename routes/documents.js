@@ -8,10 +8,18 @@ const { v4: uuidv4 } = require('uuid');
 const { pool }     = require('../db/pool');
 const { auditLog } = require('../middleware/audit');
 const { requireAdmin } = require('../middleware/auth');
+const { logActivity } = require('../services/activityLog');
 const archiver = require('archiver');
 const { PutObjectCommand, GetObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
 
 const router = Router();
+
+function fmtDocSummary(patientName, documentType, fileName) {
+  const name = patientName || 'Unknown';
+  const type = documentType || 'Document';
+  const file = fileName    || '';
+  return file ? `${name} — ${type}: ${file}` : `${name} — ${type}`;
+}
 
 const S3_CONFIGURED = !!(
   process.env.AWS_ACCESS_KEY_ID &&
@@ -230,6 +238,7 @@ router.post('/admin/bulk-delete', requireAdmin, async (req, res) => {
       [req.session.staff.id, ...ids]
     );
     await auditLog(req, 'BULK_DELETE', 'document', null);
+    await logActivity(req, 'deleted', 'document', null, `Bulk delete: ${ids.length} document${ids.length === 1 ? '' : 's'}`);
     res.json({ success: true, deletedCount: ids.length });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -348,6 +357,7 @@ router.post('/upload', upload.single('file'), async (req, res) => {
     );
 
     await auditLog(req, 'UPLOAD', 'document', rows[0].id);
+    await logActivity(req, 'created', 'document', rows[0].id, fmtDocSummary(rows[0].patient_name, rows[0].document_type, rows[0].file_name));
     res.status(201).json({ success: true, document: rows[0] });
   } catch (err) {
     console.error('[Documents] Upload error:', err.message);
@@ -401,6 +411,7 @@ router.put('/:id', async (req, res) => {
     );
     if (!rows[0]) return res.status(404).json({ error: 'Document not found' });
     await auditLog(req, 'UPDATE', 'document', req.params.id);
+    await logActivity(req, 'edited', 'document', rows[0].id, fmtDocSummary(rows[0].patient_name, rows[0].document_type, rows[0].file_name));
     res.json(rows[0]);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -441,6 +452,7 @@ router.patch('/:id', requireAdmin, async (req, res) => {
     );
     if (!rows[0]) return res.status(404).json({ error: 'Document not found' });
     await auditLog(req, 'REASSIGN', 'document', req.params.id);
+    await logActivity(req, 'edited', 'document', rows[0].id, fmtDocSummary(rows[0].patient_name, rows[0].document_type, rows[0].file_name));
     res.json(rows[0]);
   } catch (err) {
     console.error('[Documents] Patch error:', err.message);
@@ -456,7 +468,8 @@ router.delete('/:id', async (req, res) => {
     }
     const { rows } = await pool.query(
       `UPDATE documents SET deleted = true, deleted_at = NOW(), deleted_by = $1
-       WHERE id = $2 AND deleted = false RETURNING id, s3_key, s3_bucket`,
+       WHERE id = $2 AND deleted = false
+       RETURNING id, s3_key, s3_bucket, patient_name, document_type, file_name`,
       [req.session.staff.id, req.params.id]
     );
     if (!rows[0]) return res.status(404).json({ error: 'Document not found' });
@@ -474,6 +487,7 @@ router.delete('/:id', async (req, res) => {
     }
 
     await auditLog(req, 'DELETE', 'document', req.params.id);
+    await logActivity(req, 'deleted', 'document', rows[0].id, fmtDocSummary(rows[0].patient_name, rows[0].document_type, rows[0].file_name));
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

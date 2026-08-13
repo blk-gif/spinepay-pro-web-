@@ -461,8 +461,15 @@ window.App = (() => {
     // Logout
     $('logoutBtn').addEventListener('click', logout);
 
-    // Load dashboard
-    loadDashboard();
+    // Load initial module — honour #hash deep-links (e.g. /app.html#scheduling)
+    const validModules = ['dashboard','patients','scheduling','soap','intake','billing',
+                          'eob','reports','transport','pi','waitlist','referrals','timeclock','reminders'];
+    const hashModule = window.location.hash.slice(1);
+    if (hashModule && validModules.includes(hashModule)) {
+      navigateTo(hashModule);
+    } else {
+      loadDashboard();
+    }
   }
 
   document.addEventListener('DOMContentLoaded', init);

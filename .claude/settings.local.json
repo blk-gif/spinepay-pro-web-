@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(node --env-file=.env -e \":*)",
+      "Bash(node --env-file=.env -e \"require\\(''./routes/billing''\\); console.log\\(''billing.js loads cleanly''\\);\")",
+      "Bash(node --env-file=.env -e \"require\\(''./routes/appointments''\\); console.log\\(''appointments.js loads cleanly''\\);\")",
+      "Bash(python3 -c \":*)",
+      "Bash(node -e \":*)",
+      "Bash(node --env-file=.env scripts/test-mail.js jaytorres103@gmail.com)",
+      "Bash(node:*)",
+      "Bash(eb:*)",
+      "Bash(aws:*)",
+      "Bash(curl:*)",
+      "Bash(ls /c/Users/Jayto/Documents/spinepay-pro-web/*.zip)",
+      "Bash(pip install:*)",
+      "Bash(python:*)",
+      "Bash(node -e \"require\\(''./routes/reminders''\\)\")",
+      "Bash(git:*)",
+      "Bash(npm uninstall:*)"
+    ]
+  }
+}

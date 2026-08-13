@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Activity Log — SpinePay Pro</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div id="app">
+  <div id="sidebar"></div>
+  <div id="main">
+    <div id="topbar"></div>
+    <div id="content" class="main-content">
+      <div id="alert-area"></div>
+
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Activity Log</span>
+          <button class="btn btn-outline" onclick="loadLog()">Refresh</button>
+        </div>
+
+        <!-- Filters -->
+        <div style="display:flex;gap:12px;flex-wrap:wrap;padding:12px 16px;border-bottom:1px solid var(--border)">
+          <div class="form-group" style="margin:0;min-width:160px">
+            <label style="font-size:11px;color:var(--text-muted)">Staff member</label>
+            <select id="f-actor" onchange="loadLog()" style="width:100%">
+              <option value="">All staff</option>
+            </select>
+          </div>
+          <div class="form-group" style="margin:0;min-width:160px">
+            <label style="font-size:11px;color:var(--text-muted)">Record type</label>
+            <select id="f-type" onchange="loadLog()" style="width:100%">
+              <option value="">All types</option>
+              <option value="patient">Patient</option>
+              <option value="appointment">Appointment</option>
+              <option value="billing_claim">Billing claim</option>
+              <option value="eob_record">EOB record</option>
+              <option value="document">Document</option>
+              <option value="transportation">Transportation</option>
+              <option value="referral">Referral</option>
+              <option value="waitlist">Waitlist</option>
+            </select>
+          </div>
+          <div class="form-group" style="margin:0;min-width:130px">
+            <label style="font-size:11px;color:var(--text-muted)">From date</label>
+            <input id="f-from" type="date" onchange="loadLog()" style="width:100%">
+          </div>
+          <div class="form-group" style="margin:0;min-width:130px">
+            <label style="font-size:11px;color:var(--text-muted)">To date</label>
+            <input id="f-to" type="date" onchange="loadLog()" style="width:100%">
+          </div>
+          <div class="form-group" style="margin:0;align-self:flex-end">
+            <button class="btn btn-outline" onclick="clearFilters()">Clear</button>
+          </div>
+        </div>
+
+        <!-- Table -->
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Timestamp</th>
+                <th>Staff</th>
+                <th>Action</th>
+                <th>Type</th>
+                <th>Record</th>
+              </tr>
+            </thead>
+            <tbody id="log-tbody">
+              <tr><td colspan="5" style="text-align:center;color:var(--text-muted)">Loading…</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div id="log-count" style="padding:8px 16px;font-size:12px;color:var(--text-muted)"></div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script src="/js/layout.js"></script>
+<script>
+let currentUser = null;
+
+const ACTION_BADGE = {
+  created: { bg: 'rgba(46,204,113,.15)', color: '#2ecc71', border: 'rgba(46,204,113,.3)' },
+  edited:  { bg: 'rgba(52,152,219,.15)', color: '#3498db', border: 'rgba(52,152,219,.3)' },
+  deleted: { bg: 'rgba(231,76,60,.15)',  color: '#e74c3c', border: 'rgba(231,76,60,.3)'  },
+};
+
+const TYPE_LABELS = {
+  patient:       'Patient',
+  appointment:   'Appointment',
+  billing_claim: 'Billing claim',
+  eob_record:    'EOB record',
+  document:      'Document',
+  transportation:'Transportation',
+  referral:      'Referral',
+  waitlist:      'Waitlist',
+};
+
+function actionBadge(action) {
+  const s = ACTION_BADGE[action] || { bg: 'rgba(255,255,255,.08)', color: '#ccc', border: 'rgba(255,255,255,.15)' };
+  const label = action.charAt(0).toUpperCase() + action.slice(1);
+  return `<span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;
+    background:${s.bg};color:${s.color};border:1px solid ${s.border}">${window.escHtml(label)}</span>`;
+}
+
+function fmtTs(ts) {
+  if (!ts) return '—';
+  const d = new Date(ts);
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    + ' ' + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+}
+
+async function loadLog() {
+  const actor      = document.getElementById('f-actor').value;
+  const recordType = document.getElementById('f-type').value;
+  const dateFrom   = document.getElementById('f-from').value;
+  const dateTo     = document.getElementById('f-to').value;
+
+  const params = new URLSearchParams();
+  if (actor)      params.set('actor', actor);
+  if (recordType) params.set('record_type', recordType);
+  if (dateFrom)   params.set('date_from', dateFrom);
+  if (dateTo)     params.set('date_to', dateTo);
+
+  const tbody = document.getElementById('log-tbody');
+  tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-muted)">Loading…</td></tr>';
+
+  try {
+    const rows = await GET('/api/activity-log?' + params.toString());
+    document.getElementById('log-count').textContent = rows.length
+      ? `Showing ${rows.length} entr${rows.length === 1 ? 'y' : 'ies'}${rows.length === 500 ? ' (limit reached — narrow filters to see more)' : ''}`
+      : '';
+
+    if (!rows.length) {
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-muted)">No activity found</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = rows.map(r => `
+      <tr>
+        <td style="white-space:nowrap;font-size:12px">${fmtTs(r.created_at)}</td>
+        <td>
+          <div style="font-size:13px">${window.escHtml(r.actor_username)}</div>
+          <div style="font-size:11px;color:var(--text-muted);text-transform:capitalize">${window.escHtml(r.actor_role)}</div>
+        </td>
+        <td>${actionBadge(r.action)}</td>
+        <td style="font-size:12px;color:var(--text-muted)">${window.escHtml(TYPE_LABELS[r.record_type] || r.record_type)}</td>
+        <td style="font-size:13px">${window.escHtml(r.record_summary || '—')}</td>
+      </tr>`).join('');
+  } catch (err) {
+    tbody.innerHTML = `<tr><td colspan="5" style="color:var(--danger)">${window.escHtml(err.message)}</td></tr>`;
+  }
+}
+
+async function populateActors() {
+  try {
+    const actors = await GET('/api/activity-log/actors');
+    const sel = document.getElementById('f-actor');
+    actors.forEach(a => {
+      const opt = document.createElement('option');
+      opt.value = a;
+      opt.textContent = a;
+      sel.appendChild(opt);
+    });
+  } catch (_) {}
+}
+
+function clearFilters() {
+  document.getElementById('f-actor').value = '';
+  document.getElementById('f-type').value  = '';
+  document.getElementById('f-from').value  = '';
+  document.getElementById('f-to').value    = '';
+  loadLog();
+}
+
+(async () => {
+  currentUser = await requireLogin();
+  if (!currentUser) return;
+  if (currentUser.role !== 'admin') {
+    document.getElementById('content').innerHTML =
+      '<div style="padding:40px;text-align:center;color:var(--text-muted)">Access restricted to administrators.</div>';
+    return;
+  }
+  await populateActors();
+  loadLog();
+})();
+</script>
+</body>
+</html>

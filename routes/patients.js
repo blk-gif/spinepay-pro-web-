@@ -3,6 +3,7 @@
 const { Router } = require('express');
 const { pool } = require('../db/pool');
 const { auditLog } = require('../middleware/audit');
+const { logActivity } = require('../services/activityLog');
 
 const router = Router();
 
@@ -45,6 +46,7 @@ router.post('/', async (req, res) => {
       [first_name, last_name, dob||null, gender||null, phone||null, email||null, address||null, city||null, state||null, zip||null, emergency_contact||null, emergency_phone||null, insurance_name||null, insurance_id||null, group_number||null, notes||null]
     );
     await auditLog(req, 'CREATE', 'patient', rows[0].id);
+    await logActivity(req, 'created', 'patient', rows[0].id, `${rows[0].first_name} ${rows[0].last_name}`);
     res.status(201).json(rows[0]);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -61,6 +63,7 @@ router.put('/:id', async (req, res) => {
     );
     if (!rows[0]) return res.status(404).json({ error: 'Patient not found' });
     await auditLog(req, 'UPDATE', 'patient', req.params.id);
+    await logActivity(req, 'edited', 'patient', rows[0].id, `${rows[0].first_name} ${rows[0].last_name}`);
     res.json(rows[0]);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -70,6 +73,12 @@ router.delete('/:id', async (req, res) => {
   try {
     if (req.session.staff.role !== 'admin') return res.status(403).json({ error: 'Admin required' });
     const id = req.params.id;
+
+    // Capture name before deletion so the activity log has a useful summary
+    const nameResult = await pool.query('SELECT first_name, last_name FROM patients WHERE id = $1', [id]);
+    const patientName = nameResult.rows[0]
+      ? `${nameResult.rows[0].first_name} ${nameResult.rows[0].last_name}`
+      : `Patient #${id}`;
 
     // Nullify FK references on tables that lack ON DELETE SET NULL.
     // documents and review_requests were defined without it; nullify rather
@@ -110,6 +119,7 @@ router.delete('/:id', async (req, res) => {
 
     await pool.query('DELETE FROM patients WHERE id = $1', [id]);
     await auditLog(req, 'DELETE', 'patient', id);
+    await logActivity(req, 'deleted', 'patient', id, patientName);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

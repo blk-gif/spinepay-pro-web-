@@ -112,6 +112,7 @@ app.use('/api/timeclock',     requireAuth,  require('./routes/timeclock'));
 app.use('/api/reports',       requireAuth,  require('./routes/reports'));
 app.use('/api/documents',     requireAuth,  require('./routes/documents'));
 app.use('/api/backup',        requireAdmin, require('./routes/backup'));
+app.use('/api/activity-log', requireAdmin, require('./routes/activity-log'));
 app.use('/webhooks',                        require('./routes/webhooks'));
 
 // Serve local document uploads (S3 fallback)

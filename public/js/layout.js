@@ -33,6 +33,7 @@
     { section: 'SYSTEM' },
     { label: 'Staff',            href: '/staff',             icon: '👤', adminOnly: true  },
     { label: 'Time Approvals',   href: '/timeclock-admin',   icon: '✅', adminOnly: true  },
+    { label: 'Activity Log',     href: '/activity-log',      icon: '📋', adminOnly: true  },
     { label: 'Settings',         href: '/settings',          icon: '⚙️', adminOnly: true  },
   ];
 

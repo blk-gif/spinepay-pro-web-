@@ -389,6 +389,21 @@ async function runMigrations() {
       );
 
       CREATE INDEX IF NOT EXISTS idx_pi_invoices_case ON pi_invoices(pi_case_id);
+
+      CREATE TABLE IF NOT EXISTS activity_log (
+        id             SERIAL PRIMARY KEY,
+        actor_username TEXT NOT NULL,
+        actor_role     TEXT NOT NULL,
+        action         TEXT NOT NULL,
+        record_type    TEXT NOT NULL,
+        record_id      TEXT,
+        record_summary TEXT,
+        created_at     TIMESTAMPTZ DEFAULT NOW()
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_activity_log_created ON activity_log(created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_activity_log_actor   ON activity_log(actor_username);
+      CREATE INDEX IF NOT EXISTS idx_activity_log_type    ON activity_log(record_type);
     `);
 
     // ── Column additions for existing databases ───────────────────────────────

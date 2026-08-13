@@ -2,7 +2,15 @@
 const { Router } = require('express');
 const { pool } = require('../db/pool');
 const { auditLog } = require('../middleware/audit');
+const { logActivity } = require('../services/activityLog');
 const router = Router();
+
+function fmtEobSummary(patientName, payerName, paidAmount) {
+  const name  = patientName || 'Unknown';
+  const payer = payerName   || 'Unknown payer';
+  const amt   = '$' + (parseFloat(paidAmount) || 0).toFixed(2);
+  return `${name} — ${payer}, ${amt} paid`;
+}
 
 router.get('/by-patient/:patientId', async (req, res) => {
   try {
@@ -39,6 +47,7 @@ router.post('/', async (req, res) => {
       [patient_id||null, patient_name||null, claim_id||null, payer_name||null, claim_number||null, service_date||null, billed_amount||0, allowed_amount||0, paid_amount||0, patient_resp||0, adjustment||0, denial_reason||null, received_date||null]
     );
     await auditLog(req, 'CREATE', 'eob_record', rows[0].id);
+    await logActivity(req, 'created', 'eob_record', rows[0].id, fmtEobSummary(rows[0].patient_name, rows[0].payer_name, rows[0].paid_amount));
     res.status(201).json(rows[0]);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -52,6 +61,7 @@ router.put('/:id', async (req, res) => {
     );
     if (!rows[0]) return res.status(404).json({ error: 'Not found' });
     await auditLog(req, 'UPDATE', 'eob_record', req.params.id);
+    await logActivity(req, 'edited', 'eob_record', rows[0].id, fmtEobSummary(rows[0].patient_name, rows[0].payer_name, rows[0].paid_amount));
     res.json(rows[0]);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -59,8 +69,13 @@ router.put('/:id', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   try {
     if (req.session.staff.role !== 'admin') return res.status(403).json({ error: 'Admin required' });
+    // Pre-fetch for activity log summary before deletion
+    const pre = await pool.query('SELECT patient_name, payer_name, paid_amount FROM eob_records WHERE id = $1', [req.params.id]);
+    const r = pre.rows[0];
+    const deleteSummary = r ? fmtEobSummary(r.patient_name, r.payer_name, r.paid_amount) : `EOB #${req.params.id}`;
     await pool.query('DELETE FROM eob_records WHERE id = $1', [req.params.id]);
     await auditLog(req, 'DELETE', 'eob_record', req.params.id);
+    await logActivity(req, 'deleted', 'eob_record', req.params.id, deleteSummary);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

@@ -2,7 +2,14 @@
 const { Router } = require('express');
 const { pool } = require('../db/pool');
 const { auditLog } = require('../middleware/audit');
+const { logActivity } = require('../services/activityLog');
 const router = Router();
+
+function fmtClaimSummary(patientName, billedAmount) {
+  const name = patientName || 'Unknown';
+  const amt = '$' + (parseFloat(billedAmount) || 0).toFixed(2);
+  return `${name} — ${amt}`;
+}
 
 router.get('/by-patient/:patientId', async (req, res) => {
   try {
@@ -40,6 +47,7 @@ router.post('/', async (req, res) => {
       [patient_id||null, patient_name||null, insurance_name||null, claimNum, service_date||null, submitted_date||null, cpt_codes||null, icd_codes||null, billed_amount||0, notes||null]
     );
     await auditLog(req, 'CREATE', 'billing_claim', rows[0].id);
+    await logActivity(req, 'created', 'billing_claim', rows[0].id, fmtClaimSummary(rows[0].patient_name, rows[0].billed_amount));
     res.status(201).json(rows[0]);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -55,6 +63,7 @@ router.put('/:id', async (req, res) => {
     );
     if (!rows[0]) return res.status(404).json({ error: 'Not found' });
     await auditLog(req, 'UPDATE', 'billing_claim', req.params.id);
+    await logActivity(req, 'edited', 'billing_claim', rows[0].id, fmtClaimSummary(rows[0].patient_name, rows[0].billed_amount));
     res.json(rows[0]);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -62,8 +71,13 @@ router.put('/:id', async (req, res) => {
 router.patch('/:id/status', async (req, res) => {
   try {
     const { status, denial_reason } = req.body;
+    // Pre-fetch for activity log summary (query unchanged)
+    const pre = await pool.query('SELECT patient_name, billed_amount FROM billing_claims WHERE id = $1', [req.params.id]);
     await pool.query('UPDATE billing_claims SET status=$1, denial_reason=$2, updated_at=NOW() WHERE id=$3', [status, denial_reason||null, req.params.id]);
     await auditLog(req, 'UPDATE', 'billing_claim', req.params.id);
+    const r = pre.rows[0];
+    await logActivity(req, 'edited', 'billing_claim', req.params.id,
+      r ? `${r.patient_name || 'Unknown'} — status → ${status}` : `Claim #${req.params.id} — status → ${status}`);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -71,8 +85,13 @@ router.patch('/:id/status', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   try {
     if (req.session.staff.role !== 'admin') return res.status(403).json({ error: 'Admin required' });
+    // Pre-fetch for activity log summary before deletion
+    const pre = await pool.query('SELECT patient_name, billed_amount FROM billing_claims WHERE id = $1', [req.params.id]);
+    const r = pre.rows[0];
+    const deleteSummary = r ? fmtClaimSummary(r.patient_name, r.billed_amount) : `Claim #${req.params.id}`;
     await pool.query('DELETE FROM billing_claims WHERE id = $1', [req.params.id]);
     await auditLog(req, 'DELETE', 'billing_claim', req.params.id);
+    await logActivity(req, 'deleted', 'billing_claim', req.params.id, deleteSummary);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

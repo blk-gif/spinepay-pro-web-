@@ -5,6 +5,7 @@ const bcrypt = require('bcryptjs');
 const { pool } = require('../db/pool');
 const { auditLog } = require('../middleware/audit');
 const { sendEmail } = require('../services/mail');
+const { logActivity } = require('../services/activityLog');
 
 const router = Router();
 
@@ -53,6 +54,7 @@ router.post('/', async (req, res) => {
       [first_name, last_name, username, hash, role||'Staff', email||null]
     );
     await auditLog(req, 'CREATE', 'staff', rows[0].id);
+    await logActivity(req, 'created', 'staff', rows[0].id, `${rows[0].first_name} ${rows[0].last_name} — ${rows[0].role}`);
     await sendWelcomeEmail({ first_name, username: rows[0].username, email: email || null }, temp_password_plain);
     res.status(201).json(rows[0]);
   } catch (err) {
@@ -64,7 +66,13 @@ router.post('/', async (req, res) => {
 router.patch('/:id/active', async (req, res) => {
   try {
     const { active } = req.body;
+    const { rows: staffRows } = await pool.query(
+      'SELECT first_name, last_name FROM staff WHERE id = $1', [req.params.id]
+    );
     await pool.query('UPDATE staff SET active = $1 WHERE id = $2', [active, req.params.id]);
+    await auditLog(req, active ? 'ACTIVATE' : 'DEACTIVATE', 'staff', req.params.id);
+    const name = staffRows[0] ? `${staffRows[0].first_name} ${staffRows[0].last_name}` : `Staff #${req.params.id}`;
+    await logActivity(req, 'edited', 'staff', req.params.id, `${name} — ${active ? 'activated' : 'deactivated'}`);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -75,6 +83,7 @@ router.post('/:id/reset-password', async (req, res) => {
     if (!newPassword || newPassword.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
     const hash = await bcrypt.hash(newPassword, 10);
     await pool.query('UPDATE staff SET password = $1, temp_password = TRUE WHERE id = $2', [hash, req.params.id]);
+    await auditLog(req, 'RESET_PASSWORD', 'staff', req.params.id);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -85,6 +94,9 @@ router.delete('/:id', async (req, res) => {
     if (id === req.session.staff.id) {
       return res.status(400).json({ error: 'You cannot delete your own account' });
     }
+    const { rows: prefetch } = await pool.query(
+      'SELECT first_name, last_name, role FROM staff WHERE id = $1', [id]
+    );
     await pool.query('DELETE FROM time_clock WHERE staff_id = $1', [id]);
     await pool.query('DELETE FROM staff_hipaa WHERE staff_id = $1', [id]);
     await pool.query('DELETE FROM staff_login_history WHERE staff_id = $1', [id]);
@@ -96,6 +108,11 @@ router.delete('/:id', async (req, res) => {
     if (!rows[0]) return res.status(404).json({ error: 'Staff member not found' });
     console.log('[Staff] Deleted:', rows[0].username);
     await auditLog(req, 'DELETE', 'staff', id);
+    const deleted = prefetch[0];
+    const deletedSummary = deleted
+      ? `${deleted.first_name} ${deleted.last_name} — ${deleted.role}`
+      : `Staff #${id}`;
+    await logActivity(req, 'deleted', 'staff', id, deletedSummary);
     res.json({ success: true });
   } catch (err) {
     console.error('[Staff] Delete error:', err.message);

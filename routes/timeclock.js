@@ -1,6 +1,8 @@
 'use strict';
 const { Router } = require('express');
 const { pool } = require('../db/pool');
+const { auditLog } = require('../middleware/audit');
+const { logActivity } = require('../services/activityLog');
 const router = Router();
 
 router.get('/users', async (req, res) => {
@@ -64,6 +66,8 @@ router.post('/clock-in', async (req, res) => {
       `INSERT INTO time_clock (staff_id, staff_name) VALUES ($1, $2) RETURNING *`,
       [staffId, req.session.staff.full_name]
     );
+    await auditLog(req, 'CREATE', 'time_clock', rows[0].id);
+    await logActivity(req, 'created', 'time_clock', rows[0].id, `${req.session.staff.full_name || 'Unknown'} — clocked in`);
     res.status(201).json(rows[0]);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -74,7 +78,10 @@ router.post('/clock-out', async (req, res) => {
     const { rows: open } = await pool.query('SELECT id, clock_in FROM time_clock WHERE staff_id = $1 AND clock_out IS NULL', [staffId]);
     if (!open.length) return res.status(400).json({ error: 'Not clocked in' });
     const hours = (Date.now() - new Date(open[0].clock_in).getTime()) / 3600000;
-    await pool.query('UPDATE time_clock SET clock_out = NOW(), total_hours = $1 WHERE id = $2', [Math.round(hours * 100) / 100, open[0].id]);
+    const roundedHours = Math.round(hours * 100) / 100;
+    await pool.query('UPDATE time_clock SET clock_out = NOW(), total_hours = $1 WHERE id = $2', [roundedHours, open[0].id]);
+    await auditLog(req, 'UPDATE', 'time_clock', open[0].id);
+    await logActivity(req, 'edited', 'time_clock', open[0].id, `${req.session.staff.full_name || 'Unknown'} — clocked out (${roundedHours} hrs)`);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -82,7 +89,9 @@ router.post('/clock-out', async (req, res) => {
 router.patch('/:id/approve', async (req, res) => {
   try {
     if (req.session.staff.role !== 'admin') return res.status(403).json({ error: 'Admin required' });
-    await pool.query('UPDATE time_clock SET approved = TRUE, approved_by = $1, approved_at = NOW() WHERE id = $2', [req.session.staff.full_name, req.params.id]);
+    const { rows } = await pool.query('UPDATE time_clock SET approved = TRUE, approved_by = $1, approved_at = NOW() WHERE id = $2 RETURNING *', [req.session.staff.full_name, req.params.id]);
+    if (!rows[0]) return res.status(404).json({ error: 'Not found' });
+    await auditLog(req, 'APPROVE', 'time_clock', req.params.id);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -116,6 +125,7 @@ router.put('/:id/approve', async (req, res) => {
       [req.session.staff.full_name, req.params.id]
     );
     if (!rows[0]) return res.status(404).json({ error: 'Not found' });
+    await auditLog(req, 'APPROVE', 'time_clock', req.params.id);
     res.json(rows[0]);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -123,8 +133,12 @@ router.put('/:id/approve', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   try {
     if (req.session.staff.role !== 'admin') return res.status(403).json({ error: 'Admin required' });
+    const pre = await pool.query('SELECT staff_name FROM time_clock WHERE id = $1', [req.params.id]);
+    const staffName = pre.rows[0]?.staff_name || 'Unknown';
     const { rows } = await pool.query('DELETE FROM time_clock WHERE id = $1 RETURNING id', [req.params.id]);
     if (!rows[0]) return res.status(404).json({ error: 'Entry not found' });
+    await auditLog(req, 'DELETE', 'time_clock', req.params.id);
+    await logActivity(req, 'deleted', 'time_clock', req.params.id, `${staffName} — entry deleted by admin`);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -142,6 +156,8 @@ router.put('/:id/edit', async (req, res) => {
       [clock_in, clock_out || null, total_hours, notes || null, req.params.id]
     );
     if (!rows[0]) return res.status(404).json({ error: 'Not found' });
+    await auditLog(req, 'UPDATE', 'time_clock', rows[0].id);
+    await logActivity(req, 'edited', 'time_clock', rows[0].id, `${rows[0].staff_name || 'Unknown'} — entry edited by admin`);
     res.json(rows[0]);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

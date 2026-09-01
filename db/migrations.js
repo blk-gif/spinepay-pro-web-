@@ -411,6 +411,32 @@ async function runMigrations() {
     await client.query(`ALTER TABLE documents ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW()`).catch(() => {});
     await client.query(`ALTER TABLE reminder_log ADD COLUMN IF NOT EXISTS error_reason TEXT`).catch(() => {});
 
+    // ── Stripe payment columns ────────────────────────────────────────────────
+    await client.query(`ALTER TABLE payments ADD COLUMN IF NOT EXISTS stripe_payment_intent_id TEXT`).catch(() => {});
+    await client.query(`ALTER TABLE payments ADD COLUMN IF NOT EXISTS stripe_charge_id TEXT`).catch(() => {});
+    await client.query(`ALTER TABLE payments ADD COLUMN IF NOT EXISTS card_last4 TEXT`).catch(() => {});
+
+    // ── payment_refunds — each Stripe refund is its own auditable record ──────
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS payment_refunds (
+        id               SERIAL PRIMARY KEY,
+        payment_id       INTEGER REFERENCES payments(id) ON DELETE SET NULL,
+        stripe_refund_id TEXT NOT NULL,
+        amount           NUMERIC(10,2) NOT NULL,
+        reason           TEXT,
+        refunded_by_name TEXT,
+        created_at       TIMESTAMPTZ DEFAULT NOW()
+      )
+    `).catch(() => {});
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_payment_refunds_payment ON payment_refunds(payment_id)`).catch(() => {});
+
+    // ── Partial unique index for Stripe idempotency ───────────────────────────
+    await client.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_payments_stripe_pi
+      ON payments(stripe_payment_intent_id)
+      WHERE stripe_payment_intent_id IS NOT NULL
+    `).catch(() => {});
+
 
     // Default practice settings
     await client.query(`

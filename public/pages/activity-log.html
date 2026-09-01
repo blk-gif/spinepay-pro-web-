@@ -44,6 +44,8 @@
               <option value="intake_form">Intake Form</option>
               <option value="time_clock">Time Clock</option>
               <option value="staff">Staff</option>
+              <option value="stripe_payment">Stripe payment</option>
+              <option value="payment_refund">Payment refund</option>
             </select>
           </div>
           <div class="form-group" style="margin:0;min-width:130px">
@@ -88,25 +90,28 @@
 let currentUser = null;
 
 const ACTION_BADGE = {
-  created: { bg: 'rgba(46,204,113,.15)', color: '#2ecc71', border: 'rgba(46,204,113,.3)' },
-  edited:  { bg: 'rgba(52,152,219,.15)', color: '#3498db', border: 'rgba(52,152,219,.3)' },
-  deleted: { bg: 'rgba(231,76,60,.15)',  color: '#e74c3c', border: 'rgba(231,76,60,.3)'  },
+  created:  { bg: 'rgba(46,204,113,.15)',  color: '#2ecc71', border: 'rgba(46,204,113,.3)'  },
+  edited:   { bg: 'rgba(52,152,219,.15)',  color: '#3498db', border: 'rgba(52,152,219,.3)'  },
+  deleted:  { bg: 'rgba(231,76,60,.15)',   color: '#e74c3c', border: 'rgba(231,76,60,.3)'   },
+  refunded: { bg: 'rgba(243,156,18,.15)',  color: '#f39c12', border: 'rgba(243,156,18,.3)'  },
 };
 
 const TYPE_LABELS = {
-  patient:       'Patient',
-  appointment:   'Appointment',
-  billing_claim: 'Billing claim',
-  eob_record:    'EOB record',
-  document:      'Document',
-  transportation:'Transportation',
-  referral:      'Referral',
-  waitlist:      'Waitlist',
-  pi_case:       'PI Case',
-  soap_note:     'SOAP Note',
-  intake_form:   'Intake Form',
-  time_clock:    'Time Clock',
-  staff:         'Staff',
+  patient:         'Patient',
+  appointment:     'Appointment',
+  billing_claim:   'Billing claim',
+  eob_record:      'EOB record',
+  document:        'Document',
+  transportation:  'Transportation',
+  referral:        'Referral',
+  waitlist:        'Waitlist',
+  pi_case:         'PI Case',
+  soap_note:       'SOAP Note',
+  intake_form:     'Intake Form',
+  time_clock:      'Time Clock',
+  staff:           'Staff',
+  stripe_payment:  'Stripe payment',
+  payment_refund:  'Payment refund',
 };
 
 function actionBadge(action) {

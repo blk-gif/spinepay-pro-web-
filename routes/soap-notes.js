@@ -3,8 +3,17 @@
 const { Router } = require('express');
 const { pool } = require('../db/pool');
 const { auditLog } = require('../middleware/audit');
+const { logActivity } = require('../services/activityLog');
 
 const router = Router();
+
+function fmtSoapSummary(patientName, noteDate) {
+  const name = patientName || 'Unknown';
+  if (!noteDate) return `${name} — SOAP Note`;
+  const d = new Date(noteDate);
+  const dateStr = isNaN(d) ? String(noteDate) : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+  return `${name} — ${dateStr}`;
+}
 
 router.get('/by-patient/:patientId', async (req, res) => {
   try {
@@ -65,6 +74,7 @@ router.post('/', async (req, res) => {
       [patient_id||null, patient_name||null, appointment_id||null, note_date||null, provider||null, subjective||null, objective||null, assessment||null, plan||null, icd_codes||null, cpt_codes||null, req.session.staff.full_name]
     );
     await auditLog(req, 'CREATE', 'soap_note', rows[0].id);
+    await logActivity(req, 'created', 'soap_note', rows[0].id, fmtSoapSummary(rows[0].patient_name, rows[0].note_date));
     res.status(201).json(rows[0]);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -83,6 +93,7 @@ router.put('/:id', async (req, res) => {
     }
     if (!rows[0]) return res.status(404).json({ error: 'Not found' });
     await auditLog(req, 'UPDATE', 'soap_note', req.params.id);
+    await logActivity(req, 'edited', 'soap_note', rows[0].id, fmtSoapSummary(rows[0].patient_name, rows[0].note_date));
     res.json(rows[0]);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -90,8 +101,12 @@ router.put('/:id', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   try {
     if (req.session.staff.role !== 'admin') return res.status(403).json({ error: 'Admin required' });
+    const pre = await pool.query('SELECT patient_name, note_date FROM soap_notes WHERE id = $1', [req.params.id]);
+    const r = pre.rows[0];
+    const deleteSummary = r ? fmtSoapSummary(r.patient_name, r.note_date) : `SOAP Note #${req.params.id}`;
     await pool.query('DELETE FROM soap_notes WHERE id = $1', [req.params.id]);
     await auditLog(req, 'DELETE', 'soap_note', req.params.id);
+    await logActivity(req, 'deleted', 'soap_note', req.params.id, deleteSummary);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

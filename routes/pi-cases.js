@@ -2,6 +2,7 @@
 const { Router } = require('express');
 const { pool } = require('../db/pool');
 const { auditLog } = require('../middleware/audit');
+const { logActivity } = require('../services/activityLog');
 const PDFDocument = require('pdfkit');
 const router = Router();
 
@@ -27,6 +28,12 @@ function fmtDate(d) {
   }
   if (isNaN(y) || isNaN(m) || isNaN(day)) return String(d);
   return `${String(m).padStart(2,'0')}/${String(day).padStart(2,'0')}/${y}`;
+}
+
+function fmtPiSummary(patientName, accidentType, dateOfAccident) {
+  const name = patientName || 'Unknown';
+  const type = accidentType || 'PI Case';
+  return dateOfAccident ? `${name} — ${type}, ${fmtDate(dateOfAccident)}` : `${name} — ${type}`;
 }
 
 router.get('/by-patient/:patientId', async (req, res) => {
@@ -59,6 +66,7 @@ router.post('/', async (req, res) => {
       [patient_id||null, patient_name||null, date_of_accident||null, accident_type||null, accident_description||null, attorney_name||null, attorney_firm||null, attorney_phone||null, attorney_email||null, insurance_company||null, claim_number||null, adjuster_name||null, adjuster_phone||null, policy_limit||0, lien_amount||0]
     );
     await auditLog(req, 'CREATE', 'pi_case', rows[0].id);
+    await logActivity(req, 'created', 'pi_case', rows[0].id, fmtPiSummary(rows[0].patient_name, rows[0].accident_type, rows[0].date_of_accident));
     res.status(201).json(rows[0]);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -89,6 +97,7 @@ router.put('/:id', async (req, res) => {
     );
     if (!rows[0]) return res.status(404).json({ error: 'Not found' });
     await auditLog(req, 'UPDATE', 'pi_case', req.params.id);
+    await logActivity(req, 'edited', 'pi_case', rows[0].id, fmtPiSummary(rows[0].patient_name, rows[0].accident_type, rows[0].date_of_accident));
     res.json(rows[0]);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -96,7 +105,12 @@ router.put('/:id', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   try {
     if (req.session.staff.role !== 'admin') return res.status(403).json({ error: 'Admin required' });
+    const pre = await pool.query('SELECT patient_name, accident_type, date_of_accident FROM pi_cases WHERE id = $1', [req.params.id]);
+    const r = pre.rows[0];
+    const deleteSummary = r ? fmtPiSummary(r.patient_name, r.accident_type, r.date_of_accident) : `PI Case #${req.params.id}`;
     await pool.query('DELETE FROM pi_cases WHERE id = $1', [req.params.id]);
+    await auditLog(req, 'DELETE', 'pi_case', req.params.id);
+    await logActivity(req, 'deleted', 'pi_case', req.params.id, deleteSummary);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

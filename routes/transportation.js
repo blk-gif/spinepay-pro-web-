@@ -2,7 +2,16 @@
 const { Router } = require('express');
 const { pool } = require('../db/pool');
 const { auditLog } = require('../middleware/audit');
+const { logActivity } = require('../services/activityLog');
 const router = Router();
+
+function fmtTransportSummary(patientName, pickupTime) {
+  const name = patientName || 'Unknown';
+  if (!pickupTime) return name;
+  const d = new Date(pickupTime);
+  const timeStr = isNaN(d) ? String(pickupTime) : d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'UTC' });
+  return `${name} — pickup: ${timeStr}`;
+}
 
 router.get('/by-patient/:patientId', async (req, res) => {
   try {
@@ -32,6 +41,8 @@ router.post('/', async (req, res) => {
       `INSERT INTO transportation (patient_id, appointment_id, patient_name, pickup_address, pickup_time, dropoff_address, driver_name, driver_notes) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
       [patient_id||null, appointment_id||null, patient_name||null, pickup_address||null, pickup_time||null, dropoff_address||null, driver_name||null, driver_notes||null]
     );
+    await auditLog(req, 'CREATE', 'transportation', rows[0].id);
+    await logActivity(req, 'created', 'transportation', rows[0].id, fmtTransportSummary(rows[0].patient_name, rows[0].pickup_time));
     res.status(201).json(rows[0]);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -43,6 +54,8 @@ router.put('/:id', async (req, res) => {
       `UPDATE transportation SET pickup_address=$1, pickup_time=$2, dropoff_address=$3, driver_name=$4, driver_notes=$5, status=$6 WHERE id=$7 RETURNING *`,
       [pickup_address||null, pickup_time||null, dropoff_address||null, driver_name||null, driver_notes||null, status||'requested', req.params.id]
     );
+    await auditLog(req, 'UPDATE', 'transportation', req.params.id);
+    await logActivity(req, 'edited', 'transportation', rows[0].id, fmtTransportSummary(rows[0].patient_name, rows[0].pickup_time));
     res.json(rows[0]);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -50,8 +63,12 @@ router.put('/:id', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   try {
     if (req.session.staff.role !== 'admin') return res.status(403).json({ error: 'Admin required' });
+    const pre = await pool.query('SELECT patient_name, pickup_time FROM transportation WHERE id = $1', [req.params.id]);
+    const r = pre.rows[0];
+    const deleteSummary = r ? fmtTransportSummary(r.patient_name, r.pickup_time) : `Transportation #${req.params.id}`;
     await pool.query('DELETE FROM transportation WHERE id = $1', [req.params.id]);
     await auditLog(req, 'DELETE', 'transportation', req.params.id);
+    await logActivity(req, 'deleted', 'transportation', req.params.id, deleteSummary);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

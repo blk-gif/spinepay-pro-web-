@@ -10,6 +10,10 @@ window.Billing = (() => {
   let editingClaimId   = null;
   let activeTab    = 'claims';
 
+  // Stripe Elements — initialized lazily on first card modal open
+  let stripeInstance  = null;
+  let stripeCardElem  = null;
+
   const INSURERS = [
     'BlueCross Blue Shield', 'Aetna', 'UnitedHealth', 'Cigna',
     'Medicare', 'Medicaid', 'Humana', 'Anthem',
@@ -105,10 +109,11 @@ window.Billing = (() => {
                   <th>Method</th>
                   <th>Reference</th>
                   <th>Notes</th>
+                  <th style="width:90px;">Actions</th>
                 </tr>
               </thead>
               <tbody id="paymentsTableBody">
-                <tr><td colspan="6"><div class="table-empty"><i class="fa-solid fa-spinner fa-spin"></i><p>Loading...</p></div></td></tr>
+                <tr><td colspan="7"><div class="table-empty"><i class="fa-solid fa-spinner fa-spin"></i><p>Loading...</p></div></td></tr>
               </tbody>
             </table>
           </div>
@@ -264,7 +269,7 @@ window.Billing = (() => {
           <div class="modal-body">
             <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:rgba(52,152,219,0.1);border:1px solid rgba(52,152,219,0.2);border-radius:var(--radius-sm);margin-bottom:16px;font-size:12px;color:var(--info);">
               <i class="fa-solid fa-circle-info"></i>
-              Stripe Test Mode — no real charges will be made. Use card 4242 4242 4242 4242.
+              Stripe Test Mode — use card 4242 4242 4242 4242, any future expiry, any 3-digit CVC.
             </div>
             <div class="form-grid form-grid-2">
               <div class="form-group">
@@ -275,33 +280,27 @@ window.Billing = (() => {
               </div>
               <div class="form-group">
                 <label class="form-label">Amount ($) <span class="required">*</span></label>
-                <input type="number" class="form-control" id="stripeAmount" min="0.01" step="0.01" placeholder="0.00" required />
+                <input type="number" class="form-control" id="stripeAmount" min="0.50" step="0.01" placeholder="0.00" required />
+              </div>
+              <div class="form-group full-width">
+                <label class="form-label">Link to Claim (optional)</label>
+                <select class="form-control" id="stripeClaimLink">
+                  <option value="">No linked claim</option>
+                </select>
               </div>
             </div>
             <div class="stripe-form mt-12">
               <div class="form-label" style="margin-bottom:8px;">Card Details</div>
-              <div class="stripe-card-element">
-                <i class="fa-regular fa-credit-card" style="color:var(--text-faint);font-size:20px;"></i>
-                <input type="text" placeholder="4242 4242 4242 4242" id="stripeCardNumber"
-                  style="flex:1;background:none;border:none;color:var(--text-primary);font-size:14px;outline:none;font-family:inherit;" maxlength="19" />
-              </div>
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px;">
-                <div class="stripe-card-element">
-                  <input type="text" placeholder="MM/YY" id="stripeExpiry"
-                    style="width:100%;background:none;border:none;color:var(--text-primary);font-size:14px;outline:none;font-family:inherit;" maxlength="5" />
-                </div>
-                <div class="stripe-card-element">
-                  <input type="text" placeholder="CVC" id="stripeCvc"
-                    style="width:100%;background:none;border:none;color:var(--text-primary);font-size:14px;outline:none;font-family:inherit;" maxlength="4" />
-                </div>
-              </div>
+              <!-- Stripe Elements mounts here — card data goes directly to Stripe, never to our server -->
+              <div id="stripe-card-element" style="padding:12px 14px;background:var(--bg3,#2a2a2a);border:1px solid var(--border,#3a3a3a);border-radius:var(--radius-sm,4px);min-height:44px;"></div>
+              <div id="stripe-card-errors" style="color:#fa755a;font-size:12px;margin-top:6px;min-height:18px;"></div>
               <div class="stripe-badges mt-8">
                 <span class="stripe-badge">VISA</span>
                 <span class="stripe-badge">Mastercard</span>
                 <span class="stripe-badge">AMEX</span>
                 <span class="stripe-badge">Discover</span>
                 <span class="stripe-badge" style="margin-left:auto;color:var(--success);border-color:rgba(46,204,113,0.3);">
-                  <i class="fa-solid fa-lock"></i> Encrypted
+                  <i class="fa-solid fa-lock"></i> Encrypted by Stripe
                 </span>
               </div>
             </div>
@@ -449,22 +448,34 @@ window.Billing = (() => {
 
     const tbody = document.getElementById('paymentsTableBody');
     if (filtered.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="6"><div class="table-empty"><i class="fa-solid fa-money-bill"></i><p>No payments found</p></div></td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="7"><div class="table-empty"><i class="fa-solid fa-money-bill"></i><p>No payments found</p></div></td></tr>`;
     } else {
       tbody.innerHTML = filtered.map(p => {
         const methodIcons = { cash: 'fa-money-bill', card: 'fa-credit-card', check: 'fa-money-check', insurance: 'fa-shield-halved', stripe: 'fa-stripe-s' };
+        // Show last4 prominently for Stripe payments; fall back to reference field
+        const reference = p.card_last4
+          ? `···· ${p.card_last4}`
+          : (p.reference || '—');
+        const isStripe = p.method === 'stripe' && p.stripe_payment_intent_id;
         return `<tr>
           <td class="td-primary">${formatDate(p.date)}</td>
-          <td>${p.first_name} ${p.last_name}</td>
+          <td>${p.first_name || ''} ${p.last_name || ''}</td>
           <td class="text-success" style="font-weight:700;">${formatCurrency(p.amount)}</td>
           <td>
             <span style="display:flex;align-items:center;gap:5px;font-size:12px;text-transform:capitalize;">
-              <i class="fa-solid ${methodIcons[p.method] || 'fa-dollar-sign'}" style="color:var(--gold);"></i>
+              <i class="fa-brands ${methodIcons[p.method] || 'fa-dollar-sign'}" style="color:var(--gold);"></i>
               ${p.method}
             </span>
           </td>
-          <td style="font-size:12px;">${p.reference || '—'}</td>
+          <td style="font-size:12px;">${reference}</td>
           <td style="font-size:12px;color:var(--text-muted);">${p.notes || '—'}</td>
+          <td onclick="event.stopPropagation()">
+            ${isStripe
+              ? `<button class="btn btn-sm btn-outline" style="font-size:11px;" title="Issue Stripe refund" onclick="window.Billing.refundPayment(${p.id})">
+                   <i class="fa-solid fa-rotate-left"></i> Refund
+                 </button>`
+              : '—'}
+          </td>
         </tr>`;
       }).join('');
     }
@@ -691,66 +702,182 @@ window.Billing = (() => {
   }
 
   // ── Stripe Processing ──────────────────────────────────────────────────────
-  function openStripeModal() {
+
+  async function initStripe() {
+    if (stripeInstance) return true;
+    if (typeof Stripe === 'undefined') {
+      toast('Stripe.js failed to load. Check your internet connection.', 'error');
+      return false;
+    }
+    try {
+      const resp = await fetch('/api/config/stripe', { credentials: 'include' });
+      const { publishable_key } = await resp.json();
+      if (!publishable_key) {
+        toast('Stripe is not configured on this server. Contact your administrator.', 'error');
+        return false;
+      }
+      stripeInstance = Stripe(publishable_key);
+    } catch (err) {
+      console.error('[Stripe] Init failed:', err);
+      toast('Failed to initialize Stripe', 'error');
+      return false;
+    }
+    return true;
+  }
+
+  async function openStripeModal() {
     document.getElementById('stripeAmount').value = '';
-    document.getElementById('stripeCardNumber').value = '';
-    document.getElementById('stripeExpiry').value = '';
-    document.getElementById('stripeCvc').value = '';
+    const errDiv = document.getElementById('stripe-card-errors');
+    if (errDiv) errDiv.textContent = '';
+
+    // Reset claim link dropdown
+    const claimSel = document.getElementById('stripeClaimLink');
+    if (claimSel) claimSel.innerHTML = '<option value="">No linked claim</option>';
+
     openModal('stripeModal');
+
+    const ok = await initStripe();
+    if (!ok) { closeModal('stripeModal'); return; }
+
+    if (!stripeCardElem) {
+      const elements = stripeInstance.elements();
+      stripeCardElem = elements.create('card', {
+        style: {
+          base: {
+            color: '#f0f0f0',
+            fontFamily: 'Inter, system-ui, sans-serif',
+            fontSize: '14px',
+            fontSmoothing: 'antialiased',
+            '::placeholder': { color: '#777' },
+          },
+          invalid: { color: '#fa755a', iconColor: '#fa755a' },
+        },
+      });
+      stripeCardElem.mount('#stripe-card-element');
+      stripeCardElem.on('change', (event) => {
+        const div = document.getElementById('stripe-card-errors');
+        if (div) div.textContent = event.error ? event.error.message : '';
+      });
+    }
   }
 
-  // Card number formatting
-  function formatCardNumber(e) {
-    let val = e.target.value.replace(/\D/g, '').substring(0,16);
-    val = val.replace(/(.{4})/g, '$1 ').trim();
-    e.target.value = val;
-  }
-
-  function formatExpiry(e) {
-    let val = e.target.value.replace(/\D/g, '').substring(0,4);
-    if (val.length >= 2) val = val.substring(0,2) + '/' + val.substring(2);
-    e.target.value = val;
+  // Update claims dropdown when patient selected in Stripe modal
+  async function onStripePatientChange() {
+    const patientId = document.getElementById('stripePatient').value;
+    const sel = document.getElementById('stripeClaimLink');
+    if (!sel) return;
+    sel.innerHTML = '<option value="">No linked claim</option>';
+    if (!patientId) return;
+    try {
+      const claims = await window.api.claims.getByPatient(parseInt(patientId));
+      const unpaid = claims.filter(c => c.status !== 'paid');
+      unpaid.forEach(c => {
+        sel.innerHTML += `<option value="${c.id}">${c.claim_number || 'CLM-' + c.id} — ${formatCurrency((c.billed_amount || 0) - (c.paid_amount || 0))} balance</option>`;
+      });
+    } catch (e) {}
   }
 
   async function processStripePayment() {
     const patientId = document.getElementById('stripePatient').value;
     const amount    = parseFloat(document.getElementById('stripeAmount').value);
-    const cardNum   = document.getElementById('stripeCardNumber').value.replace(/\s/g,'');
-    const expiry    = document.getElementById('stripeExpiry').value;
-    const cvc       = document.getElementById('stripeCvc').value;
 
-    if (!amount || amount <= 0) { toast('Please enter a valid amount', 'warning'); return; }
-    if (cardNum.length < 16) { toast('Please enter a valid card number', 'warning'); return; }
-    if (!expiry || expiry.length < 5) { toast('Please enter a valid expiry', 'warning'); return; }
-    if (!cvc || cvc.length < 3) { toast('Please enter a valid CVC', 'warning'); return; }
+    if (!amount || amount < 0.50) { toast('Please enter a valid amount (minimum $0.50)', 'warning'); return; }
+    if (!stripeCardElem) { toast('Please wait for the card form to load', 'warning'); return; }
+
+    const claimId = document.getElementById('stripeClaimLink')?.value || null;
 
     const btn = document.getElementById('stripeModalProcess');
     btn.disabled = true;
     btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Processing...';
 
-    // Simulate processing delay
-    await new Promise(r => setTimeout(r, 1800));
-
     try {
-      if (patientId) {
-        await window.api.payments.create({
-          patient_id: parseInt(patientId),
-          claim_id:   null,
-          amount,
-          method:     'stripe',
-          reference:  `STRIPE-${Date.now().toString().slice(-8)}`,
-          date:       window.App.todayString(),
-          notes:      `Card ending in ${cardNum.slice(-4)} — Test Mode`
-        });
+      // Step 1: Our server creates a PaymentIntent and returns the client_secret.
+      //         Amount and patient metadata are set here — the server is the authority.
+      const intentResp = await fetch('/api/payments/create-intent', {
+        method:      'POST',
+        credentials: 'include',
+        headers:     { 'Content-Type': 'application/json' },
+        body:        JSON.stringify({
+          amount_dollars: amount,
+          patient_id:     patientId ? parseInt(patientId) : null,
+          claim_id:       claimId   ? parseInt(claimId)   : null,
+        }),
+      });
+
+      if (!intentResp.ok) {
+        const err = await intentResp.json().catch(() => ({}));
+        toast(err.error || 'Failed to initiate payment', 'error');
+        return;
       }
+
+      const { client_secret, payment_intent_id } = await intentResp.json();
+
+      // Step 2: Confirm the card payment with Stripe.
+      //         Card data goes directly from the browser to Stripe — our server
+      //         never sees the raw card number, expiry, or CVC.
+      const { paymentIntent, error } = await stripeInstance.confirmCardPayment(
+        client_secret,
+        { payment_method: { card: stripeCardElem } }
+      );
+
+      if (error) {
+        const errDiv = document.getElementById('stripe-card-errors');
+        if (errDiv) errDiv.textContent = error.message;
+        toast(error.message, 'error');
+        return;
+      }
+
+      // Step 3: Tell our server the payment succeeded so it can write the DB
+      //         record immediately (the webhook is the durable safety net).
+      await fetch('/api/payments/confirm', {
+        method:      'POST',
+        credentials: 'include',
+        headers:     { 'Content-Type': 'application/json' },
+        body:        JSON.stringify({
+          payment_intent_id: paymentIntent.id,
+          patient_id:        patientId ? parseInt(patientId) : null,
+          claim_id:          claimId   ? parseInt(claimId)   : null,
+        }),
+      });
+
       closeModal('stripeModal');
       toast(`Card payment of ${formatCurrency(amount)} processed successfully`, 'success');
       await loadAll();
     } catch (err) {
-      toast('Payment processing failed', 'error');
+      console.error('[Stripe] Payment error:', err);
+      toast('Payment processing failed. Please try again.', 'error');
     } finally {
       btn.disabled = false;
       btn.innerHTML = '<i class="fa-brands fa-stripe-s"></i> Process Payment';
+    }
+  }
+
+  async function refundPayment(paymentId) {
+    const confirmed = await confirm(
+      'Issue a full Stripe refund for this payment? This cannot be undone.',
+      'Issue Refund',
+      'btn-warning'
+    );
+    if (!confirmed) return;
+
+    try {
+      const resp = await fetch(`/api/payments/${paymentId}/refund`, {
+        method:      'POST',
+        credentials: 'include',
+        headers:     { 'Content-Type': 'application/json' },
+        body:        JSON.stringify({}),
+      });
+
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        toast(err.error || 'Refund failed', 'error');
+        return;
+      }
+
+      toast('Refund issued successfully', 'success');
+      await loadAll();
+    } catch (err) {
+      toast('Refund failed', 'error');
     }
   }
 
@@ -784,12 +911,9 @@ window.Billing = (() => {
     document.getElementById('paymentModalSave')?.addEventListener('click', savePayment);
     document.getElementById('stripeModalProcess')?.addEventListener('click', processStripePayment);
 
-    // Patient change → load claims
+    // Patient change → load claims for linked claim dropdowns
     document.getElementById('paymentPatient')?.addEventListener('change', onPaymentPatientChange);
-
-    // Stripe card formatting
-    document.getElementById('stripeCardNumber')?.addEventListener('input', formatCardNumber);
-    document.getElementById('stripeExpiry')?.addEventListener('input', formatExpiry);
+    document.getElementById('stripePatient')?.addEventListener('change', onStripePatientChange);
 
     // Modal close
     window.App.setupModalClose('claimModal',   ['claimModalClose', 'claimModalCancel']);
@@ -803,6 +927,7 @@ window.Billing = (() => {
     openEditClaim,
     deleteClaim,
     showInvoice,
+    refundPayment,
     refresh: loadAll
   };
 })();

@@ -21,6 +21,18 @@ app.set('trust proxy', 1);
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors({ origin: process.env.ALLOWED_ORIGIN || true, credentials: true }));
 app.use(morgan('[:date[iso]] :method :url :status :response-time ms'));
+
+// ── Stripe webhook — MUST be before express.json() ───────────────────────────
+// Stripe signs webhook payloads; verifying the signature requires the raw
+// Buffer, which express.json() destroys.  Mounting with express.raw() here,
+// before the global JSON parser, preserves req.body as a Buffer for this
+// route only.
+app.post(
+  '/webhooks/stripe',
+  express.raw({ type: 'application/json' }),
+  require('./routes/stripe-webhook')
+);
+
 app.use(express.json({ limit: '10kb' }));
 app.use(express.urlencoded({ extended: false, limit: '10kb' }));
 // Redirect old SPA entry point to new standalone dashboard
@@ -73,6 +85,11 @@ app.get('/api/health', async (req, res) => {
   } catch (err) {
     res.status(503).json({ status: 'unhealthy', database: 'disconnected' });
   }
+});
+
+// Stripe publishable key is intentionally public — safe to expose unauthenticated.
+app.get('/api/config/stripe', (req, res) => {
+  res.json({ publishable_key: process.env.STRIPE_PUBLISHABLE_KEY || '' });
 });
 
 const { requireAuth, requireAdmin } = require('./middleware/auth');

@@ -2,6 +2,7 @@
 const { Router } = require('express');
 const { pool } = require('../db/pool');
 const { auditLog } = require('../middleware/audit');
+const { logActivity } = require('../services/activityLog');
 const router = Router();
 
 router.get('/by-patient/:patientId', async (req, res) => {
@@ -37,8 +38,11 @@ router.get('/:id', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   try {
     if (req.session.staff.role !== 'admin') return res.status(403).json({ error: 'Admin required' });
+    const pre = await pool.query('SELECT full_name FROM intake_forms WHERE id = $1', [req.params.id]);
+    const deleteSummary = pre.rows[0] ? `${pre.rows[0].full_name || 'Unknown'} — intake form` : `Intake Form #${req.params.id}`;
     await pool.query('DELETE FROM intake_forms WHERE id = $1', [req.params.id]);
     await auditLog(req, 'DELETE', 'intake_form', req.params.id);
+    await logActivity(req, 'deleted', 'intake_form', req.params.id, deleteSummary);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -52,6 +56,7 @@ router.post('/', async (req, res) => {
       [patient_id||null, full_name||null, dob||null, gender||null, address||null, phone||null, email||null, insurance_provider||null, policy_number||null, group_number||null, medical_history||null, current_medications||null, allergies||null, reason_for_visit||null, pain_scale||null, hipaa_acknowledged||false, signature||null, signature_date||null]
     );
     await auditLog(req, 'CREATE', 'intake_form', rows[0].id);
+    await logActivity(req, 'created', 'intake_form', rows[0].id, `${rows[0].full_name || 'Unknown'} — intake form`);
     res.status(201).json(rows[0]);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

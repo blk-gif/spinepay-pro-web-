@@ -8,3 +8,7 @@ Thumbs.db
 .env
 *.env
 dist/
+
+# Build artifacts
+*.zip
+make-zip.ps1

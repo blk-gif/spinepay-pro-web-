@@ -2,7 +2,13 @@
 const { Router } = require('express');
 const { pool } = require('../db/pool');
 const { auditLog } = require('../middleware/audit');
+const { logActivity } = require('../services/activityLog');
 const router = Router();
+
+function fmtReferralSummary(patientName, recipientName) {
+  const name = patientName || 'Unknown';
+  return recipientName ? `${name} — to: ${recipientName}` : name;
+}
 
 router.get('/by-patient/:patientId', async (req, res) => {
   try {
@@ -33,6 +39,7 @@ router.post('/', async (req, res) => {
       [patient_id||null, patient_name||null, type||null, recipient_name||null, recipient_email||null, recipient_phone||null, reason||null, notes||null]
     );
     await auditLog(req, 'CREATE', 'referral', rows[0].id);
+    await logActivity(req, 'created', 'referral', rows[0].id, fmtReferralSummary(rows[0].patient_name, rows[0].recipient_name));
     res.status(201).json(rows[0]);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -40,9 +47,13 @@ router.post('/', async (req, res) => {
 router.patch('/:id/status', async (req, res) => {
   try {
     const { status } = req.body;
+    const pre = await pool.query('SELECT patient_name, recipient_name FROM referrals WHERE id = $1', [req.params.id]);
+    const r = pre.rows[0];
     const sent_date = status === 'sent' ? new Date().toISOString().split('T')[0] : null;
     await pool.query('UPDATE referrals SET status=$1, sent_date=COALESCE($2::date, sent_date) WHERE id=$3', [status, sent_date, req.params.id]);
     await auditLog(req, 'UPDATE', 'referral', req.params.id);
+    await logActivity(req, 'edited', 'referral', req.params.id,
+      r ? `${fmtReferralSummary(r.patient_name, r.recipient_name)} — status → ${status}` : `Referral #${req.params.id} — status → ${status}`);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -50,8 +61,12 @@ router.patch('/:id/status', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   try {
     if (req.session.staff.role !== 'admin') return res.status(403).json({ error: 'Admin required' });
+    const pre = await pool.query('SELECT patient_name, recipient_name FROM referrals WHERE id = $1', [req.params.id]);
+    const r = pre.rows[0];
+    const deleteSummary = r ? fmtReferralSummary(r.patient_name, r.recipient_name) : `Referral #${req.params.id}`;
     await pool.query('DELETE FROM referrals WHERE id = $1', [req.params.id]);
     await auditLog(req, 'DELETE', 'referral', req.params.id);
+    await logActivity(req, 'deleted', 'referral', req.params.id, deleteSummary);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

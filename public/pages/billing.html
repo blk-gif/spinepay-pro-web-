@@ -17,6 +17,22 @@
     .patient-suggestion-item:hover { background: var(--bg3); color: var(--gold); }
     .patient-no-match { padding: 8px 12px; font-size: 12px; color: var(--text-muted); font-style: italic; }
     .alert-warning { background: rgba(255,183,18,0.12); border: 1px solid rgba(255,183,18,0.4); color: #FFD700; border-radius: 6px; padding: 8px 12px; font-size: 13px; margin-bottom: 8px; }
+    /* Stripe Elements mount container */
+    .stripe-card-box {
+      padding: 12px 14px;
+      background: var(--bg3, #2a2a2a);
+      border: 1px solid var(--border, #3a3a3a);
+      border-radius: 6px;
+      min-height: 44px;
+      margin-bottom: 6px;
+    }
+    .stripe-error { color: #fa755a; font-size: 12px; min-height: 18px; margin-bottom: 8px; }
+    .stripe-note {
+      display: flex; align-items: center; gap: 8px;
+      padding: 9px 12px; margin-bottom: 14px;
+      background: rgba(52,152,219,0.1); border: 1px solid rgba(52,152,219,0.2);
+      border-radius: 6px; font-size: 12px; color: #5dade2;
+    }
   </style>
 </head>
 <body>
@@ -26,8 +42,9 @@
     <div id="topbar"></div>
     <div id="content" class="main-content">
       <div id="alert-area"></div>
-      <div class="stats-row" id="billing-stats" style="display:none"></div>
-      <div class="card">
+
+      <!-- ── CLAIMS ───────────────────────────────────────────────────────── -->
+      <div class="card" style="margin-bottom:24px">
         <div class="card-header">
           <span class="card-title">Claims</span>
           <div style="display:flex;gap:8px">
@@ -43,17 +60,50 @@
           </div>
         </div>
         <div class="table-wrap">
-          <table><thead><tr><th>Claim #</th><th>Patient</th><th>Insurance</th><th>Service Date</th><th>Billed</th><th>Paid</th><th>Status</th><th>Actions</th></tr></thead>
-          <tbody id="claims-tbody"></tbody></table>
+          <table>
+            <thead><tr><th>Claim #</th><th>Patient</th><th>Insurance</th><th>Service Date</th><th>Billed</th><th>Paid</th><th>Status</th><th>Actions</th></tr></thead>
+            <tbody id="claims-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ── PAYMENTS ─────────────────────────────────────────────────────── -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Payments</span>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-outline" onclick="openRecordModal()">+ Record Payment</button>
+            <button class="btn btn-primary" onclick="openStripeModal()">&#9889; Process Card</button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Patient</th>
+                <th>Amount</th>
+                <th>Method</th>
+                <th>Reference</th>
+                <th>Notes</th>
+                <th style="width:90px">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="payments-tbody"></tbody>
+          </table>
         </div>
       </div>
     </div>
   </div>
 </div>
 
+<!-- ── CLAIM MODAL ─────────────────────────────────────────────────────────── -->
 <div class="modal-overlay hidden" id="claim-modal">
   <div class="modal">
-    <div class="modal-header"><span class="modal-title" id="claim-modal-title">New Claim</span><button class="modal-close" onclick="closeModal('claim-modal')">×</button></div>
+    <div class="modal-header">
+      <span class="modal-title" id="claim-modal-title">New Claim</span>
+      <button class="modal-close" onclick="closeModal('claim-modal')">×</button>
+    </div>
     <div id="claim-alert"></div>
     <div class="form-row">
       <div class="form-group"><label>Patient Name</label><input id="c-patient" type="text" autocomplete="off"><input type="hidden" id="c-patient-id"></div>
@@ -69,7 +119,12 @@
     </div>
     <div class="form-row">
       <div class="form-group"><label>Billed Amount</label><input id="c-billed" type="number" step="0.01" value="0"></div>
-      <div class="form-group"><label>Status</label><select id="c-status"><option>pending</option><option>submitted</option><option>paid</option><option>partial</option><option>denied</option></select></div>
+      <div class="form-group"><label>Status</label>
+        <select id="c-status">
+          <option>pending</option><option>submitted</option>
+          <option>paid</option><option>partial</option><option>denied</option>
+        </select>
+      </div>
     </div>
     <div class="form-group"><label>Notes</label><textarea id="c-notes"></textarea></div>
     <div class="modal-footer">
@@ -79,44 +134,142 @@
   </div>
 </div>
 
+<!-- ── RECORD PAYMENT MODAL (manual: cash / check / insurance / etc.) ─────── -->
+<div class="modal-overlay hidden" id="record-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Record Payment</span>
+      <button class="modal-close" onclick="closeModal('record-modal')">×</button>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Patient</label>
+        <select id="r-patient" onchange="onRecordPatientChange()">
+          <option value="">Select patient…</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Link to Claim (optional)</label>
+        <select id="r-claim"><option value="">No linked claim</option></select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Amount ($)</label><input id="r-amount" type="number" step="0.01" min="0.01" placeholder="0.00"></div>
+      <div class="form-group">
+        <label>Method</label>
+        <select id="r-method">
+          <option value="cash">Cash</option>
+          <option value="check">Check</option>
+          <option value="card">Card (manual)</option>
+          <option value="insurance">Insurance</option>
+          <option value="other">Other</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Date</label><input id="r-date" type="date"></div>
+      <div class="form-group"><label>Reference / Check #</label><input id="r-ref" type="text" placeholder="Optional"></div>
+    </div>
+    <div class="form-group"><label>Notes</label><textarea id="r-notes" rows="2"></textarea></div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('record-modal')">Cancel</button>
+      <button class="btn btn-primary" id="r-save-btn" onclick="savePayment()">Record Payment</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── PROCESS CARD MODAL (Stripe Elements) ───────────────────────────────── -->
+<div class="modal-overlay hidden" id="stripe-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Process Card Payment</span>
+      <button class="modal-close" onclick="closeModal('stripe-modal')">×</button>
+    </div>
+    <div class="stripe-note">
+      &#8505;&nbsp; Stripe Test Mode — use card 4242 4242 4242 4242, any future expiry, any 3-digit CVC.
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Patient</label>
+        <select id="s-patient" onchange="onStripePatientChange()">
+          <option value="">Select patient…</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Amount ($)</label>
+        <input id="s-amount" type="number" step="0.01" min="0.50" placeholder="0.00">
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Link to Claim (optional)</label>
+      <select id="s-claim"><option value="">No linked claim</option></select>
+    </div>
+    <div class="form-group">
+      <label>Card Details</label>
+      <!-- Stripe Elements mounts here — card data goes directly to Stripe, never to our server -->
+      <div id="stripe-card-element" class="stripe-card-box"></div>
+      <div id="stripe-card-error" class="stripe-error"></div>
+    </div>
+    <div style="font-size:11px;color:var(--text-muted);text-align:right;margin-top:-4px;margin-bottom:8px;">
+      &#128274; Encrypted by Stripe &nbsp;|&nbsp; VISA &nbsp; MC &nbsp; AMEX &nbsp; Discover
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('stripe-modal')">Cancel</button>
+      <button class="btn btn-primary" id="s-process-btn" onclick="processStripePayment()">Process Payment</button>
+    </div>
+  </div>
+</div>
+
 <!-- Patient autocomplete dropdown — at body level to avoid modal overflow clipping -->
 <div id="c-patient-suggestions" class="patient-suggestions hidden"></div>
 
+<!-- Stripe.js — must be loaded from js.stripe.com, never self-hosted -->
+<script src="https://js.stripe.com/v3/"></script>
 <script src="/js/layout.js"></script>
 <script>
-let claims = [], editClaimId = null, currentUser = null;
+'use strict';
 
-// ── Patient autocomplete ───────────────────────────────────────────────────────
-let _cPatientTimer = null;
+let claims      = [];
+let payments    = [];
+let allPatients = [];
+let editClaimId = null;
+let currentUser = null;
+
+// Stripe state — initialized lazily on first modal open
+let stripeInstance = null;
+let stripeCardElem = null;
+
+// ── Patient autocomplete (claim form) ─────────────────────────────────────────
+let _ptTimer = null;
 
 document.getElementById('c-patient').addEventListener('input', function () {
   document.getElementById('c-patient-id').value = '';
-  clearTimeout(_cPatientTimer);
+  clearTimeout(_ptTimer);
   const q = this.value.trim();
-  if (q.length < 2) { hideCPtSuggestions(); return; }
-  _cPatientTimer = setTimeout(async () => {
+  if (q.length < 2) { hidePtSugg(); return; }
+  _ptTimer = setTimeout(async () => {
     try {
       const pts = await GET('/api/patients?search=' + encodeURIComponent(q));
-      showCPtSuggestions(pts);
-    } catch (_) { hideCPtSuggestions(); }
+      showPtSugg(pts);
+    } catch (_) { hidePtSugg(); }
   }, 300);
 });
 
 document.addEventListener('click', function (e) {
-  if (!e.target.closest('#c-patient') && !e.target.closest('#c-patient-suggestions')) hideCPtSuggestions();
+  if (!e.target.closest('#c-patient') && !e.target.closest('#c-patient-suggestions')) hidePtSugg();
 });
 
-function showCPtSuggestions(patients) {
+function showPtSugg(patients) {
   const input = document.getElementById('c-patient');
   const box   = document.getElementById('c-patient-suggestions');
   const rect  = input.getBoundingClientRect();
-  box.style.top   = rect.bottom + 'px';
+  box.style.top   = (rect.bottom + window.scrollY) + 'px';
   box.style.left  = rect.left + 'px';
   box.style.width = rect.width + 'px';
-  box.innerHTML = '';
+  box.innerHTML   = '';
   if (!patients.length) {
     const el = document.createElement('div');
-    el.className = 'patient-no-match';
+    el.className   = 'patient-no-match';
     el.textContent = 'No matching patients found';
     box.appendChild(el);
   } else {
@@ -128,7 +281,7 @@ function showCPtSuggestions(patients) {
       item.addEventListener('click', () => {
         document.getElementById('c-patient').value    = p.first_name + ' ' + p.last_name;
         document.getElementById('c-patient-id').value = p.id;
-        hideCPtSuggestions();
+        hidePtSugg();
       });
       box.appendChild(item);
     });
@@ -136,46 +289,68 @@ function showCPtSuggestions(patients) {
   box.classList.remove('hidden');
 }
 
-function hideCPtSuggestions() {
+function hidePtSugg() {
   document.getElementById('c-patient-suggestions').classList.add('hidden');
 }
 
+// ── Load all patients into payment modal selects ───────────────────────────────
+async function loadPatientOptions() {
+  try {
+    allPatients = await GET('/api/patients');
+    allPatients.sort((a, b) => a.last_name.localeCompare(b.last_name));
+    const opts = '<option value="">Select patient…</option>' +
+      allPatients.map(p => `<option value="${p.id}">${escHtml(p.last_name + ', ' + p.first_name)}</option>`).join('');
+    document.getElementById('r-patient').innerHTML = opts;
+    document.getElementById('s-patient').innerHTML = opts;
+  } catch (_) {}
+}
+
+// ── CLAIMS ────────────────────────────────────────────────────────────────────
 async function loadClaims() {
   const sf = document.getElementById('status-filter').value;
   claims = await GET('/api/billing/claims').catch(() => []);
   const filtered = sf ? claims.filter(c => c.status === sf) : claims;
   const tb = document.getElementById('claims-tbody');
-  if (!filtered.length) { tb.innerHTML = '<tr><td colspan="8"><div class="empty-state"><div class="icon">💰</div><p>No claims found</p></div></td></tr>'; return; }
+  if (!filtered.length) {
+    tb.innerHTML = '<tr><td colspan="8"><div class="empty-state"><div class="icon">💰</div><p>No claims found</p></div></td></tr>';
+    return;
+  }
   const isAdmin = currentUser && currentUser.role === 'admin';
   tb.innerHTML = filtered.map(c => `<tr>
-    <td><code style="font-size:11px">${escHtml(c.claim_number||'—')}</code></td>
-    <td>${escHtml((c.first_name||c.patient_name||'')+(c.last_name?' '+c.last_name:''))}</td>
-    <td>${escHtml(c.insurance_name||'—')}</td>
+    <td><code style="font-size:11px">${escHtml(c.claim_number || '—')}</code></td>
+    <td>${escHtml((c.first_name || c.patient_name || '') + (c.last_name ? ' ' + c.last_name : ''))}</td>
+    <td>${escHtml(c.insurance_name || '—')}</td>
     <td>${fmtDate(c.service_date)}</td>
     <td>${fmtMoney(c.billed_amount)}</td>
     <td>${fmtMoney(c.paid_amount)}</td>
     <td>${statusBadge(c.status)}</td>
     <td><div class="actions">
       <button class="btn btn-sm btn-outline" onclick="editClaim(${c.id})">Edit</button>
-      ${isAdmin?`<button class="btn btn-sm btn-danger" onclick="removeClaim(${c.id})" style="margin-left:6px">Remove</button>`:''}
+      ${isAdmin ? `<button class="btn btn-sm btn-danger" onclick="removeClaim(${c.id})" style="margin-left:6px">Remove</button>` : ''}
     </div></td>
   </tr>`).join('');
 }
 
-async function removeClaim(id){
-  if(!confirm('Are you sure you want to delete this claim? This cannot be undone.'))return;
-  try{const r=await fetch('/api/billing/claims/'+id,{method:'DELETE',credentials:'include'});if(!r.ok){const e=await r.json().catch(()=>({}));throw new Error(e.error||'Delete failed');}loadClaims();}catch(e){alert(e.message);}
+async function removeClaim(id) {
+  if (!confirm('Delete this claim? This cannot be undone.')) return;
+  try {
+    const r = await fetch('/api/billing/claims/' + id, { method: 'DELETE', credentials: 'include' });
+    if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.error || 'Delete failed'); }
+    loadClaims();
+  } catch (e) { alert(e.message); }
 }
+
 function openClaimModal() {
   editClaimId = null;
   document.getElementById('claim-modal-title').textContent = 'New Claim';
-  ['patient','ins','cpt','icd','notes'].forEach(f => document.getElementById('c-'+f).value='');
+  ['patient', 'ins', 'cpt', 'icd', 'notes'].forEach(f => document.getElementById('c-' + f).value = '');
   document.getElementById('c-patient-id').value = '';
-  hideCPtSuggestions();
-  document.getElementById('c-svc').value = new Date().toISOString().split('T')[0];
+  hidePtSugg();
+  document.getElementById('c-svc').value    = new Date().toISOString().split('T')[0];
   document.getElementById('c-submit').value = '';
   document.getElementById('c-billed').value = '0';
   document.getElementById('c-status').value = 'pending';
+  document.getElementById('claim-alert').innerHTML = '';
   openModal('claim-modal');
 }
 
@@ -184,16 +359,17 @@ function editClaim(id) {
   if (!c) return;
   editClaimId = id;
   document.getElementById('claim-modal-title').textContent = 'Edit Claim';
-  document.getElementById('c-patient').value    = (c.first_name||c.patient_name||'')+(c.last_name?' '+c.last_name:'');
+  document.getElementById('c-patient').value    = (c.first_name || c.patient_name || '') + (c.last_name ? ' ' + c.last_name : '');
   document.getElementById('c-patient-id').value = c.patient_id || '';
-  document.getElementById('c-ins').value      = c.insurance_name||'';
-  document.getElementById('c-svc').value      = c.service_date ? c.service_date.split('T')[0]:'';
-  document.getElementById('c-submit').value   = c.submitted_date ? c.submitted_date.split('T')[0]:'';
-  document.getElementById('c-cpt').value      = c.cpt_codes||'';
-  document.getElementById('c-icd').value      = c.icd_codes||'';
-  document.getElementById('c-billed').value   = c.billed_amount||0;
-  document.getElementById('c-status').value   = c.status||'pending';
-  document.getElementById('c-notes').value    = c.notes||'';
+  document.getElementById('c-ins').value        = c.insurance_name || '';
+  document.getElementById('c-svc').value        = c.service_date    ? c.service_date.split('T')[0]    : '';
+  document.getElementById('c-submit').value     = c.submitted_date  ? c.submitted_date.split('T')[0]  : '';
+  document.getElementById('c-cpt').value        = c.cpt_codes || '';
+  document.getElementById('c-icd').value        = c.icd_codes || '';
+  document.getElementById('c-billed').value     = c.billed_amount || 0;
+  document.getElementById('c-status').value     = c.status || 'pending';
+  document.getElementById('c-notes').value      = c.notes || '';
+  document.getElementById('claim-alert').innerHTML = '';
   openModal('claim-modal');
 }
 
@@ -209,22 +385,273 @@ async function saveClaim() {
     patient_id:     patientId ? parseInt(patientId) : null,
     patient_name:   patientName,
     insurance_name: document.getElementById('c-ins').value.trim(),
-    service_date:   document.getElementById('c-svc').value||null,
-    submitted_date: document.getElementById('c-submit').value||null,
-    cpt_codes:      document.getElementById('c-cpt').value.trim()||null,
-    icd_codes:      document.getElementById('c-icd').value.trim()||null,
-    billed_amount:  parseFloat(document.getElementById('c-billed').value)||0,
+    service_date:   document.getElementById('c-svc').value    || null,
+    submitted_date: document.getElementById('c-submit').value || null,
+    cpt_codes:      document.getElementById('c-cpt').value.trim()   || null,
+    icd_codes:      document.getElementById('c-icd').value.trim()   || null,
+    billed_amount:  parseFloat(document.getElementById('c-billed').value) || 0,
     status:         document.getElementById('c-status').value,
-    notes:          document.getElementById('c-notes').value.trim()||null,
+    notes:          document.getElementById('c-notes').value.trim() || null,
   };
   try {
-    if (editClaimId) await PUT('/api/billing/claims/'+editClaimId, data);
-    else await POST('/api/billing/claims', data);
-    closeModal('claim-modal'); loadClaims();
-  } catch (err) { document.getElementById('claim-alert').innerHTML='<div class="alert alert-error">'+err.message+'</div>'; }
+    if (editClaimId) await PUT('/api/billing/claims/' + editClaimId, data);
+    else             await POST('/api/billing/claims', data);
+    closeModal('claim-modal');
+    loadClaims();
+  } catch (err) {
+    document.getElementById('claim-alert').innerHTML = '<div class="alert alert-error">' + escHtml(err.message) + '</div>';
+  }
 }
 
-(async () => { currentUser = await requireLogin(); loadClaims(); })();
+// ── PAYMENTS ──────────────────────────────────────────────────────────────────
+async function loadPayments() {
+  payments = await GET('/api/payments').catch(() => []);
+  const tb = document.getElementById('payments-tbody');
+  if (!payments.length) {
+    tb.innerHTML = '<tr><td colspan="7"><div class="empty-state"><div class="icon">💳</div><p>No payments recorded</p></div></td></tr>';
+    return;
+  }
+  const isAdmin = currentUser && currentUser.role === 'admin';
+  tb.innerHTML = payments.map(p => {
+    const name = [p.first_name, p.last_name].filter(Boolean).join(' ') || '—';
+    // Show masked card number for Stripe payments; fall back to reference field
+    const ref  = p.card_last4 ? `···· ${p.card_last4}` : (p.reference || '—');
+    const isStripe = p.method === 'stripe' && p.stripe_payment_intent_id;
+    return `<tr>
+      <td>${fmtDate(p.date)}</td>
+      <td>${escHtml(name)}</td>
+      <td style="font-weight:700;color:var(--success,#2ecc71)">${fmtMoney(p.amount)}</td>
+      <td style="text-transform:capitalize">${escHtml(p.method || '—')}</td>
+      <td style="font-size:12px">${escHtml(ref)}</td>
+      <td style="font-size:12px;color:var(--text-muted)">${escHtml(p.notes || '—')}</td>
+      <td>
+        ${(isStripe && isAdmin)
+          ? `<button class="btn btn-sm btn-outline" onclick="refundPayment(${p.id})" title="Issue Stripe refund">&#8635; Refund</button>`
+          : '—'}
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+// ── Record Payment modal (manual) ─────────────────────────────────────────────
+function openRecordModal() {
+  document.getElementById('r-patient').value = '';
+  document.getElementById('r-claim').innerHTML = '<option value="">No linked claim</option>';
+  document.getElementById('r-amount').value  = '';
+  document.getElementById('r-method').value  = 'cash';
+  document.getElementById('r-date').value    = new Date().toISOString().split('T')[0];
+  document.getElementById('r-ref').value     = '';
+  document.getElementById('r-notes').value   = '';
+  openModal('record-modal');
+}
+
+async function onRecordPatientChange() {
+  const patientId = document.getElementById('r-patient').value;
+  const sel = document.getElementById('r-claim');
+  sel.innerHTML = '<option value="">No linked claim</option>';
+  if (!patientId) return;
+  try {
+    const c = await GET('/api/claims/by-patient/' + patientId);
+    c.filter(x => x.status !== 'paid').forEach(x => {
+      const bal = (parseFloat(x.billed_amount) || 0) - (parseFloat(x.paid_amount) || 0);
+      sel.innerHTML += `<option value="${x.id}">${escHtml(x.claim_number || 'CLM-' + x.id)} — ${fmtMoney(bal)} balance</option>`;
+    });
+  } catch (_) {}
+}
+
+async function savePayment() {
+  const patientId = document.getElementById('r-patient').value;
+  const amount    = parseFloat(document.getElementById('r-amount').value);
+  const date      = document.getElementById('r-date').value;
+  if (!amount || amount <= 0) { alert('Please enter a valid amount.'); return; }
+  if (!date)                  { alert('Please enter a payment date.'); return; }
+
+  const btn = document.getElementById('r-save-btn');
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+  try {
+    await POST('/api/payments', {
+      patient_id: patientId ? parseInt(patientId) : null,
+      claim_id:   document.getElementById('r-claim').value  ? parseInt(document.getElementById('r-claim').value)  : null,
+      amount,
+      method:     document.getElementById('r-method').value,
+      reference:  document.getElementById('r-ref').value.trim()   || null,
+      date,
+      notes:      document.getElementById('r-notes').value.trim() || null,
+    });
+    closeModal('record-modal');
+    loadPayments();
+    loadClaims(); // refresh paid_amount / status on claims
+  } catch (err) {
+    alert('Failed to record payment: ' + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Record Payment';
+  }
+}
+
+// ── Stripe: initialize Stripe.js ──────────────────────────────────────────────
+async function initStripe() {
+  if (stripeInstance) return true;
+  if (typeof Stripe === 'undefined') {
+    alert('Stripe.js failed to load. Check your internet connection.');
+    return false;
+  }
+  try {
+    const cfg = await GET('/api/config/stripe');
+    if (!cfg.publishable_key) {
+      alert('Stripe is not configured on this server. Contact your administrator.');
+      return false;
+    }
+    stripeInstance = Stripe(cfg.publishable_key);
+  } catch (err) {
+    alert('Failed to initialize Stripe.');
+    return false;
+  }
+  return true;
+}
+
+// ── Stripe: open modal ────────────────────────────────────────────────────────
+async function openStripeModal() {
+  document.getElementById('s-patient').value = '';
+  document.getElementById('s-amount').value  = '';
+  document.getElementById('s-claim').innerHTML = '<option value="">No linked claim</option>';
+  document.getElementById('stripe-card-error').textContent = '';
+  openModal('stripe-modal');
+
+  const ok = await initStripe();
+  if (!ok) { closeModal('stripe-modal'); return; }
+
+  if (!stripeCardElem) {
+    const elements = stripeInstance.elements();
+    stripeCardElem = elements.create('card', {
+      style: {
+        base: {
+          color: '#f0f0f0',
+          fontFamily: 'inherit',
+          fontSize: '14px',
+          fontSmoothing: 'antialiased',
+          '::placeholder': { color: '#777' },
+        },
+        invalid: { color: '#fa755a', iconColor: '#fa755a' },
+      },
+    });
+    stripeCardElem.mount('#stripe-card-element');
+    stripeCardElem.on('change', event => {
+      document.getElementById('stripe-card-error').textContent = event.error ? event.error.message : '';
+    });
+  }
+}
+
+async function onStripePatientChange() {
+  const patientId = document.getElementById('s-patient').value;
+  const sel = document.getElementById('s-claim');
+  sel.innerHTML = '<option value="">No linked claim</option>';
+  if (!patientId) return;
+  try {
+    const c = await GET('/api/claims/by-patient/' + patientId);
+    c.filter(x => x.status !== 'paid').forEach(x => {
+      const bal = (parseFloat(x.billed_amount) || 0) - (parseFloat(x.paid_amount) || 0);
+      sel.innerHTML += `<option value="${x.id}">${escHtml(x.claim_number || 'CLM-' + x.id)} — ${fmtMoney(bal)} balance</option>`;
+    });
+  } catch (_) {}
+}
+
+// ── Stripe: process card payment ──────────────────────────────────────────────
+async function processStripePayment() {
+  const patientId = document.getElementById('s-patient').value;
+  const amount    = parseFloat(document.getElementById('s-amount').value);
+  if (!amount || amount < 0.50) { alert('Please enter a valid amount (minimum $0.50).'); return; }
+  if (!stripeCardElem) { alert('Please wait for the card form to load.'); return; }
+
+  const btn = document.getElementById('s-process-btn');
+  btn.disabled = true;
+  btn.textContent = 'Processing…';
+
+  try {
+    // Step 1: Our server creates a PaymentIntent — amount is set server-side
+    const intentResp = await fetch('/api/payments/create-intent', {
+      method:      'POST',
+      credentials: 'include',
+      headers:     { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        amount_dollars: amount,
+        patient_id: patientId ? parseInt(patientId) : null,
+        claim_id:   document.getElementById('s-claim').value ? parseInt(document.getElementById('s-claim').value) : null,
+      }),
+    });
+    if (!intentResp.ok) {
+      const e = await intentResp.json().catch(() => ({}));
+      alert(e.error || 'Failed to initiate payment.');
+      return;
+    }
+    const { client_secret, payment_intent_id } = await intentResp.json();
+
+    // Step 2: Card data goes directly from the browser to Stripe — never touches our server
+    const { paymentIntent, error } = await stripeInstance.confirmCardPayment(
+      client_secret,
+      { payment_method: { card: stripeCardElem } }
+    );
+    if (error) {
+      document.getElementById('stripe-card-error').textContent = error.message;
+      return;
+    }
+
+    // Step 3: Tell our server the payment succeeded so it writes the DB record immediately
+    //         (the webhook at /webhooks/stripe is the durable safety net)
+    await fetch('/api/payments/confirm', {
+      method:      'POST',
+      credentials: 'include',
+      headers:     { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        payment_intent_id: paymentIntent.id,
+        patient_id: patientId ? parseInt(patientId) : null,
+        claim_id:   document.getElementById('s-claim').value ? parseInt(document.getElementById('s-claim').value) : null,
+      }),
+    });
+
+    closeModal('stripe-modal');
+    showAlert('Card payment of ' + fmtMoney(amount) + ' processed successfully.', 'success');
+    loadPayments();
+    loadClaims();
+  } catch (err) {
+    alert('Payment processing failed. Please try again.');
+    console.error('[Stripe]', err);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Process Payment';
+  }
+}
+
+// ── Stripe: refund (admin only) ───────────────────────────────────────────────
+async function refundPayment(paymentId) {
+  if (!confirm('Issue a full Stripe refund for this payment? This cannot be undone.')) return;
+  try {
+    const r = await fetch('/api/payments/' + paymentId + '/refund', {
+      method:      'POST',
+      credentials: 'include',
+      headers:     { 'Content-Type': 'application/json' },
+      body:        JSON.stringify({}),
+    });
+    if (!r.ok) {
+      const e = await r.json().catch(() => ({}));
+      alert(e.error || 'Refund failed.');
+      return;
+    }
+    showAlert('Refund issued successfully.', 'success');
+    loadPayments();
+  } catch (err) {
+    alert('Refund failed.');
+  }
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+(async () => {
+  currentUser = await requireLogin();
+  await loadPatientOptions();
+  loadClaims();
+  loadPayments();
+})();
 </script>
 </body>
 </html>

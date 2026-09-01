@@ -1,7 +1,9 @@
 # SpinePay Pro Web — Project Context
 
 ## Live URL
-https://spinepay-pro-web.onrender.com
+https://portal.waldenbaileychiropratic.com (CloudFront → EB)
+EB env: spinepay-pro-web-env (us-east-2)
+EB direct: http://spinepay-pro-web-env.eba-exdmfwye.us-east-2.elasticbeanstalk.com
 
 ## GitHub
 https://github.com/blk-gif/spinepay-pro-web-

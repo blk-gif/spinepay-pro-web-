@@ -415,8 +415,17 @@ async function loadPayments() {
   tb.innerHTML = payments.map(p => {
     const name = [p.first_name, p.last_name].filter(Boolean).join(' ') || '—';
     // Show masked card number for Stripe payments; fall back to reference field
-    const ref  = p.card_last4 ? `···· ${p.card_last4}` : (p.reference || '—');
+    const ref      = p.card_last4 ? `···· ${p.card_last4}` : (p.reference || '—');
     const isStripe = p.method === 'stripe' && p.stripe_payment_intent_id;
+    let actionCell;
+    if (isStripe && p.refunded) {
+      actionCell = `<span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;
+        background:rgba(243,156,18,.15);color:#f39c12;border:1px solid rgba(243,156,18,.3)">Refunded</span>`;
+    } else if (isStripe && isAdmin) {
+      actionCell = `<button class="btn btn-sm btn-outline" onclick="refundPayment(${p.id})" title="Issue Stripe refund">&#8635; Refund</button>`;
+    } else {
+      actionCell = '—';
+    }
     return `<tr>
       <td>${fmtDate(p.date)}</td>
       <td>${escHtml(name)}</td>
@@ -424,11 +433,7 @@ async function loadPayments() {
       <td style="text-transform:capitalize">${escHtml(p.method || '—')}</td>
       <td style="font-size:12px">${escHtml(ref)}</td>
       <td style="font-size:12px;color:var(--text-muted)">${escHtml(p.notes || '—')}</td>
-      <td>
-        ${(isStripe && isAdmin)
-          ? `<button class="btn btn-sm btn-outline" onclick="refundPayment(${p.id})" title="Issue Stripe refund">&#8635; Refund</button>`
-          : '—'}
-      </td>
+      <td>${actionCell}</td>
     </tr>`;
   }).join('');
 }

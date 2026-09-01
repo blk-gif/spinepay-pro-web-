@@ -223,7 +223,10 @@ router.post('/:id/refund', async (req, res) => {
 router.get('/by-patient/:patientId', async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT pay.*, p.first_name, p.last_name FROM payments pay LEFT JOIN patients p ON pay.patient_id = p.id WHERE pay.patient_id = $1 ORDER BY pay.date DESC`,
+      `SELECT pay.*, p.first_name, p.last_name,
+          EXISTS(SELECT 1 FROM payment_refunds pr WHERE pr.payment_id = pay.id) AS refunded
+         FROM payments pay LEFT JOIN patients p ON pay.patient_id = p.id
+        WHERE pay.patient_id = $1 ORDER BY pay.date DESC`,
       [req.params.patientId]
     );
     res.json(rows);
@@ -235,10 +238,16 @@ router.get('/', async (req, res) => {
     const { patient_id } = req.query;
     let q, params;
     if (patient_id) {
-      q = `SELECT pay.*, p.first_name, p.last_name FROM payments pay LEFT JOIN patients p ON pay.patient_id = p.id WHERE pay.patient_id = $1 ORDER BY pay.date DESC`;
+      q = `SELECT pay.*, p.first_name, p.last_name,
+               EXISTS(SELECT 1 FROM payment_refunds pr WHERE pr.payment_id = pay.id) AS refunded
+             FROM payments pay LEFT JOIN patients p ON pay.patient_id = p.id
+            WHERE pay.patient_id = $1 ORDER BY pay.date DESC`;
       params = [patient_id];
     } else {
-      q = `SELECT pay.*, p.first_name, p.last_name FROM payments pay LEFT JOIN patients p ON pay.patient_id = p.id ORDER BY pay.date DESC LIMIT 200`;
+      q = `SELECT pay.*, p.first_name, p.last_name,
+               EXISTS(SELECT 1 FROM payment_refunds pr WHERE pr.payment_id = pay.id) AS refunded
+             FROM payments pay LEFT JOIN patients p ON pay.patient_id = p.id
+            ORDER BY pay.date DESC LIMIT 200`;
       params = [];
     }
     const { rows } = await pool.query(q, params);
